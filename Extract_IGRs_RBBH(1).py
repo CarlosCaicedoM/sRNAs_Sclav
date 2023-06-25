@@ -38,7 +38,8 @@ import shutil
 import matplotlib.pyplot as plt
 import numpy as np
 import re
-
+import wget
+import gzip
 
 ### Define function to extract IGRs
 def get_intergenic_regions(handle, intergenic_length, max_intergenic_length, output_dir = "results_sRNA/IGRs"):   
@@ -1119,10 +1120,33 @@ test2 = pd.concat([test, rnaz_df], axis = 1)
 putative_sRNAs_rfam_blast = pd.concat([test2, rfam_results], axis = 1)
 
 
+#Anotar con RFAM
+
+
+url = 'ftp://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/Rfam.cm.gz'
+filename = wget.download(url)
+url2="ftp://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/Rfam.clanin"
+filename2  = wget.download(url2)
+
+
+with gzip.open(filename, 'rb') as f_in:
+    with open(' Rfam.cm', 'wb') as f_out:
+        shutil.copyfileobj(f_in, f_out)
+
+
+os.mkdir("results_sRNA/Infernal")
+Inta_Results = os.path.join("results_sRNA/Infernal","Infernal_Sclav")
+cmd_cmpress = ["cmpress", 'Rfam.cm']
+subprocess.call(cmd_cmpress)
+
+#corregir gunzip con python
+
+esl-seqstat infernal-1.1.2/mrum-genome.fa
+
+cmscan -Z 5.874406 --cut_ga --rfam --nohmmonly --tblout mrum-genome.tblout --fmt 2 --clanin Rfam.clanin Rfam.cm tutorial/mrum-genome.fa > mrum-genome.cmscan
+
+
 #Definir orientacion correcta
-
-
-
 #Anotar conserved IGRs not just the ones with RNAz results
 #Promotech y trasntermHP para todos los IGRs
 
@@ -1349,7 +1373,6 @@ reverse_complement = (rec.reverse_complement(id=rec.id, description = "reverse_c
 SeqIO.write(reverse_complement, "results_sRNA/reference_results/" + my_assembly_name(my_reference) + "_rev_comp.fasta", "fasta")
 
  
-
 
 
 
