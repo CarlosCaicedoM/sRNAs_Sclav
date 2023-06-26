@@ -12,6 +12,10 @@ Created on Thu Jan  6 22:45:32 2022
 #conda install -c conda-forge biopython 
 #conda install -c bioconda blast
 #conda install -c bioconda transtermhp 
+#pip install wget
+# conda install -c bioconda clustalw
+# conda install -c bioconda rnaz
+# conda install -c bioconda infernal
 
 #%%  Functions
 from IPython import get_ipython
@@ -800,8 +804,8 @@ os.mkdir(os.path.join("results_sRNA", "IGRs"))
 
 
 #Define the folder with the genomes to analyze
-my_input_dir = "/media/usuario/lab_bioinformatica/Carlos_Caicedo-Montoya/sRNAs_Sclav/raw_data/Genbank_group1/"
-#my_input_dir = "raw_data/Genbank_group1/"
+#my_input_dir = "/media/usuario/lab_bioinformatica/Carlos_Caicedo-Montoya/sRNAs_Sclav/raw_data/Genbank_group1/"
+my_input_dir = "raw_data/Genbank_group1/"
 #my_input_dir = "/media/usuario/lab_bioinformatica/Carlos_Caicedo-Montoya/sRNAs_Sclav/test_Actinoplanes/"
 
 
@@ -841,7 +845,7 @@ for i in my_results:
 ## Create the databases
 
 #my_reference = "GCF_001553785.1_ASM155378v1_genomic.gbff"  
-my_reference = "GCF_005519465.1_ASM551946v1_genomic.gbk"
+my_reference = "GCF_005519465.1_ASM551946v1_genomic.gbff"
 
 #install blast + suite
 make_blast_db()
@@ -1079,6 +1083,27 @@ if count < len(temp):
 my_conserved_IGRs_RNAz = os.path.join("results_sRNA/reference_results", "conserved_IGRs_my_reference_RNAz.fasta")
 rfam_db = os.path.join(os.getcwd(), "raw_data", "rfam_sequences", "Rfam.fa")
 
+#Download rfam database
+ulr_rfam_fasta = "https://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/fasta_files/Rfam.fa.gz"
+filename_rfam_fasta = wget.download(ulr_rfam_fasta)
+
+
+with gzip.open(filename_rfam_fasta, 'rb') as f_in:
+    with open('Rfam.fa', 'wb') as f_out:
+        shutil.copyfileobj(f_in, f_out)
+
+#Move the downloaded Rfam database to the corresponding folder
+os.mkdir(os.path.join("raw_data", "rfam_sequences"))
+shutil.move("Rfam.fa", os.path.join(os.getcwd(), "raw_data", "rfam_sequences"))
+
+
+#make Rfam.fa as blast db
+cline_rfam_db = NcbimakeblastdbCommandline(dbtype="nucl", 
+                                   input_file=rfam_db, 
+                                   out = rfam_db)
+stdout, stderr = cline_rfam_db()
+
+
 #BLASTn search
 cline_rfam = NcbiblastnCommandline(query=my_conserved_IGRs_RNAz, 
                                   db=rfam_db,
@@ -1121,8 +1146,6 @@ putative_sRNAs_rfam_blast = pd.concat([test2, rfam_results], axis = 1)
 
 
 #Anotar con RFAM
-
-
 url = 'ftp://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/Rfam.cm.gz'
 filename = wget.download(url)
 url2="ftp://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/Rfam.clanin"
@@ -1130,12 +1153,12 @@ filename2  = wget.download(url2)
 
 
 with gzip.open(filename, 'rb') as f_in:
-    with open(' Rfam.cm', 'wb') as f_out:
+    with open('Rfam.cm', 'wb') as f_out:
         shutil.copyfileobj(f_in, f_out)
 
 
 os.mkdir("results_sRNA/Infernal")
-Inta_Results = os.path.join("results_sRNA/Infernal","Infernal_Sclav")
+Infernal_Results = os.path.join("results_sRNA/Infernal","Infernal_Sclav")
 cmd_cmpress = ["cmpress", 'Rfam.cm']
 subprocess.call(cmd_cmpress)
 
@@ -1373,6 +1396,7 @@ reverse_complement = (rec.reverse_complement(id=rec.id, description = "reverse_c
 SeqIO.write(reverse_complement, "results_sRNA/reference_results/" + my_assembly_name(my_reference) + "_rev_comp.fasta", "fasta")
 
  
+
 
 
 
