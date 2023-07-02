@@ -31,6 +31,19 @@ import os
 from pathlib import Path
 import shutil
 import multiqc
+import pandas as pd
+import re
+import pickle as pkl
+from pydeseq2.dds import DeseqDataSet
+from pydeseq2.ds import DeseqStats
+from pydeseq2.utils import load_example_data
+
+
+
+
+import rpy2.robjects as robjects
+from rpy2.robjects.packages import importr
+import rpy2.robjects.packages as rpackages
 
 
 #Create file to download your data
@@ -253,6 +266,78 @@ for s in sam_files:
 
 
 #%% use deseq2 to determine if the genes are differentially expressed
+
+try:
+  os.mkdir(os.path.join(cur_dir, "results_rna_seq", my_experiment, "DESeq2"))
+except OSError as error:
+    print(error)
+DESeq2_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "DESeq2")
+
+
+#Convert the data from HTseq to the format required by DESeq2
+HTseq_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "HTseq")
+HTseq_files = [HTseq for HTseq in os.listdir(HTseq_folder) if HTseq.endswith(".counts") ]  
+
+
+dfs_HTseq = []
+for HT in HTseq_files:  
+    df = pd.read_table(os.path.join(HTseq_folder, HT), sep="\t", header=None)
+    df = df.rename(columns={0: 'Gene_ID'}) 
+    match = re.search(r"SRR\d+", HT)
+    if match:
+        resultado = match.group(0)
+    df = df.rename(columns={1: resultado})
+    df.set_index('Gene_ID', inplace=True)
+    dfs_HTseq.append(df)
+
+HT_concat = pd.concat(dfs_HTseq, axis = 1)
+
+rows_eliminate = df.index[-5:]  # Get the index of the last 5 rows
+HT_concat.drop(rows_eliminate, inplace=True)
+
+HT_concat = HT_concat.transpose()
+HT_file = os.path.join(DESeq2_folder, "HTseq.txt")
+HT_concat.to_csv(HT_file, sep = "\t", index=True)
+metadata_file = DESeq2_folder+"/metadata.txt"
+metadata = pd.read_table(metadata_file, sep = "\t")
+metadata.set_index('Sample', inplace=True)
+
+
+#Filter out genes that have less than 10 read counts in total
+genes_to_keep = HT_concat.columns[HT_concat.sum(axis=0) >= 10]
+HT_concat = HT_concat[genes_to_keep]
+
+
+# DeseqDataSet fits dispersion and log-fold change (LFC) parameters from
+#the data, and stores them
+dds = DeseqDataSet(
+    counts=HT_concat,
+    clinical=metadata,
+    design_factors="Condition",
+    refit_cooks=True,
+    n_cpus=8,)
+
+#Once a DeseqDataSet was initialized, we may run the deseq2() method to 
+#fit dispersions and LFCs.
+dds.deseq2()
+
+#Now that dispersions and LFCs were fitted, we may proceed with
+#statistical tests to compute p-values and adjusted p-values for 
+#differential expresion. 
+stat_res = DeseqStats(dds, n_cpus=8)
+
+#PyDESeq2 computes p-values using Wald tests. 
+#This can be done using the summary() method
+stat_res.summary()
+
+summary_DESeq2= stat_res.results_df
+
+#For visualization or post-processing purposes, it might be suitable
+#to perform LFC shrinkage. 
+lfc_shrink = stat_res.lfc_shrink(coeff="Condition_Treatment_vs_Control")
+
+
+
 
 
 #%% como saber si los datos son stranded o no 
