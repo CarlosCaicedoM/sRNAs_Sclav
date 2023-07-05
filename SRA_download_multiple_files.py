@@ -8,17 +8,17 @@ Created on Thu Apr 14 13:22:39 2022
 
 
 #conda install -c bioconda fastqc
-# conda install -c bioconda sra-tools 
+#sudo apt install sra-toolkit
 #conda install -c bioconda -c conda-forge multiqc
 #conda create -n cutadaptenv cutadapt
 #sudo apt install cutadapt
 # conda install -c bioconda fastp
-# sudo apt install bwa
-
-
-#conda create --name bowtie2-env
-#conda activate bowtie2-env
-#conda install -c bioconda bowtie2
+#sudo apt install bwa
+#pip install HTSeq
+#pip install pydeseq2
+#conda install -c conda-forge scanpy python-igraph leidenalg
+#pip install gseapy
+#pip install goatools
 
 #%%
 
@@ -28,7 +28,6 @@ get_ipython().magic('reset -sf')
 
 import subprocess
 import os
-from pathlib import Path
 import shutil
 import multiqc
 import pandas as pd
@@ -36,34 +35,34 @@ import re
 import pickle as pkl
 from pydeseq2.dds import DeseqDataSet
 from pydeseq2.ds import DeseqStats
-from pydeseq2.utils import load_example_data
+import scanpy as sc
+import gseapy as gp
+from gseapy.plot import gseaplot
+import numpy as np
+import matplotlib.pyplot as plt
 
-
-
-
-import rpy2.robjects as robjects
-from rpy2.robjects.packages import importr
-import rpy2.robjects.packages as rpackages
 
 
 #Create file to download your data
-my_experiment = "RNA-seq_Streptococcus"
+my_experiment = "S-enterica_APERO"
+my_file = "/SraAccList_S-enterica_APERO.txt"
+reference_genome = "/media/usuario/CACM/Documentos/sRNAs_Sclav/raw_data/S-enterica_APERO/GCF_000210855.2_ASM21085v2_genomic.fna"
+
+
 cur_dir = os.getcwd()
 path = os.path.join(cur_dir, "raw_data", my_experiment) 
+
 
 try: 
     os.mkdir(path) 
 except OSError as error: 
     print(error) 
 
-my_file = "/SraAccList_Streptococcus.txt"
 my_data = cur_dir+my_file
 #If you want to remove all whitespace characters (newlines and spaces) from the end of each line
 with open(my_data) as f:
     lines = [line.rstrip() for line in f]
 Accessions  = lines[0:-1]
-
-
 
 # this will download the .sra files to ~/ncbi/public/sra/ (will create directory if not present)
 for sra_id in Accessions:
@@ -71,11 +70,12 @@ for sra_id in Accessions:
     fasterq = "fasterq-dump " + sra_id + " -O " + path
     print ("The command used was: " + fasterq)
     subprocess.call(fasterq, shell=True)
-
-
-
 	
 fastq_files = [file for file in os.listdir(path) if file.endswith(".fastq") ]
+fastq_files_path = []
+for i in fastq_files:
+    fastq_files_path.append(os.path.join(path, i))
+    
 fastq_command =[]  
 for i in fastq_files:
     fastq_command.append(os.path.join(path, i))
@@ -104,16 +104,12 @@ fastq_command.append("4")
 #--noextract
 subprocess.call(fastq_command)
 
-#install multiQC
-
-multiqc.run(fastqc_outdir)
-
+#Summarize all the fastqc results with multiQC
 try:
     os.mkdir(os.path.join(cur_dir, "results_rna_seq", my_experiment, "multiqc"))
 except OSError as error:
     print(error)
  
-
 multiQC_command = ["multiqc", fastqc_outdir]
 multiQC_command.append("-n")
 multiQC_command.append(my_experiment)
@@ -125,11 +121,6 @@ subprocess.call(multiQC_command)
 
 
 
-
-
-fastq_files_path = []
-for i in fastq_files:
-    fastq_files_path.append(os.path.join(path, i))
 
 
 #Filter the adpaters
@@ -162,11 +153,26 @@ try:
 except OSError as error:
     print(error)
 
+#if single-end
 
 for i,j  in enumerate(fastq_files):
     fastp_command=["fastp", 
                    "-i", fastq_files_path[i], "-o",  
                    os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", "trimmed_"+j), 
+                   "-j", j+".json", "-h", j+".html"]
+
+    subprocess.call(fastp_command)
+
+#If paired-end
+
+for i,j  in enumerate(Accessions):
+    fastp_command=["fastp", 
+                   "-i", path+"/"+j+"_1.fastq",
+                   "-I",  path+"/"+j+"_2.fastq",               
+                   "-o", os.path.join(cur_dir, "results_rna_seq",
+                                my_experiment, "fastp", "trimmed_"+j+"_1.fastq"), 
+                   "-O", os.path.join(cur_dir, "results_rna_seq",
+                                my_experiment, "fastp", "trimmed_"+j+"_2.fastq"),
                    "-j", j+".json", "-h", j+".html"]
 
     subprocess.call(fastp_command)
@@ -207,7 +213,6 @@ except OSError as error:
     print(error)
 
 
-reference_genome = "/media/usuario/CACM/Documentos/sRNAs_Sclav/raw_data/annotations_Streptococcus/GCF_000007465.2_ASM746v2_genomic.fna"
 fastq_filtered_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp")
 fastq_filtered = [fastq for fastq in os.listdir(fastq_filtered_folder) if fastq.endswith(".fastq") ]  
 
@@ -216,7 +221,7 @@ command = ['bwa', 'index', reference_genome]
 subprocess.run(command, check=True)
 
 
-
+#SE data
 for i in fastq_filtered:  
     # Comamand for BWA
     fastq_file = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", i)
@@ -228,7 +233,23 @@ for i in fastq_filtered:
     with open(output_sam, "w") as output_file:
         subprocess.run(command, stdout=output_file, check=True)
     
+
+
+#PE data
+
+for i in Accessions:  
+    # Comamand for BWA
+    fastq_file_1 = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", "trimmed_"+i+"_1.fastq")
+    fastq_file_2 = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", "trimmed_"+i+"_2.fastq")
+    command = ["bwa", "mem", reference_genome, fastq_file_1, fastq_file_2]
+    # redirect the output to the SAM file
+    output_sam = os.path.join(cur_dir, "results_rna_seq",
+                              my_experiment, "BWA", i)  +".sam"
     
+    with open(output_sam, "w") as output_file:
+        subprocess.run(command, stdout=output_file, check=True)
+
+
 
 
 #%% count features with htseq-count
@@ -321,6 +342,10 @@ dds = DeseqDataSet(
 #fit dispersions and LFCs.
 dds.deseq2()
 
+#save the resukts
+with open(os.path.join(DESeq2_folder, "dds_detailed_pipe.pkl"), "wb") as f:
+        pkl.dump(dds, f)
+
 #Now that dispersions and LFCs were fitted, we may proceed with
 #statistical tests to compute p-values and adjusted p-values for 
 #differential expresion. 
@@ -336,6 +361,91 @@ summary_DESeq2= stat_res.results_df
 #to perform LFC shrinkage. 
 lfc_shrink = stat_res.lfc_shrink(coeff="Condition_Treatment_vs_Control")
 
+#%% plots
+## PCA
+sc.tl.pca(dds)
+sc.pl.pca(dds, color = 'Condition', size = 200)
+
+#%% Volcano
+FDR = summary_DESeq2['pvalue'] #cambiar por padjus
+FDR = FDR.values
+log_FDR = np.log10(FDR)
+
+log2_FC = summary_DESeq2['log2FoldChange']
+log2_FC = log2_FC.values
+x_thr= 1
+y_thr = -np.log10(0.3)
+
+f, ax = plt.subplots()
+ax.scatter(log2_FC[(log2_FC < -x_thr) & (-log_FDR > y_thr)], 
+           -log_FDR[(log2_FC < -x_thr) & (-log_FDR > y_thr)], color='crimson', label='DE')
+
+ax.scatter(log2_FC[(log2_FC > x_thr) & (-log_FDR > y_thr)], 
+           -log_FDR[(log2_FC > x_thr) & (-log_FDR > y_thr)], color='dodgerblue', label='DE')
+
+ax.scatter(log2_FC[(log2_FC < -x_thr) & (-log_FDR < y_thr)], 
+           -log_FDR[(log2_FC < -x_thr) & (-log_FDR < y_thr)], color='darkgrey', label='not DE')
+
+ax.scatter(log2_FC[(log2_FC > x_thr) & (-log_FDR < y_thr)], 
+           -log_FDR[(log2_FC > x_thr) & (-log_FDR < y_thr)], color='darkgrey')
+
+ax.scatter(log2_FC[(log2_FC > -x_thr) & (log2_FC < x_thr)], 
+           -log_FDR[(log2_FC > -x_thr) & (log2_FC < x_thr)], 
+           color='darkgrey')
+
+ax.grid()
+ax.set_xlabel("$log_2$ Fold Change")
+ax.set_ylabel("$-log_{10}$ FDR")
+ax.axvline(x=x_thr, color='green', linestyle='--')
+ax.axvline(x=-x_thr, color='green', linestyle='--')
+ax.axhline(y=y_thr, color='green', linestyle='--')
+ax.legend()
+
+# labels for the genes that have a FC > (1.5) and FC < -1.5
+FC_thr = 1.8
+summary_DESeq2_filtered = summary_DESeq2[(summary_DESeq2['log2FoldChange'] > FC_thr) | (summary_DESeq2['log2FoldChange'] < -FC_thr)]
+
+labels = summary_DESeq2_filtered.index.tolist()
+x_coords = list(summary_DESeq2_filtered['log2FoldChange'])
+y_coords = list(summary_DESeq2_filtered['pvalue'])
+
+for label, x, y in zip(labels, x_coords, y_coords):
+    ax.annotate(label, (x, -np.log10(y)),textcoords="data", 
+                xytext=(x, -np.log10(y)), ha='left', fontsize = 8)
+
+
+#%% MA plot
+
+log2_FC[(log2_FC < -x_thr) & (-log_FDR > y_thr)]
+
+# Obtener los valores de basemean y log2 fold change
+DE_genes = summary_DESeq2[summary_DESeq2['pvalue'] < 0.05]
+non_DE = summary_DESeq2[summary_DESeq2['pvalue'] >= 0.05]
+
+basemean_DE = DE_genes.baseMean
+basemean_non_DE = non_DE.baseMean
+
+log2_FC_DE = DE_genes.log2FoldChange
+log2_FC_non_DE = non_DE.log2FoldChange
+
+
+# Crear la figura y el eje
+fig2, ax = plt.subplots()
+ax.scatter(basemean_DE, log2_FC_DE, color='red', label = "DE")
+ax.scatter(basemean_non_DE, log2_FC_non_DE, color='black', label = "non DE")
+ax.legend()
+ax.axhline(y=0, color='red', linestyle='--')
+ax.grid()
+ax.set_xlabel('mean of normalized counts')
+ax.set_ylabel('$log_2$ Fold Change')
+
+
+#%% Gene enrichment analysis
+
+#%% Explore GSEApy
+
+"""https://gseapy.readthedocs.io/en/latest/introduction.html"""
+ranking = summary_DESeq2[['Gene_ID', 'stat']].dropna().sort_values('stat', ascending = False)
 
 
 
