@@ -20,7 +20,8 @@ Created on Thu Jul  6 15:59:27 2023
 #pip install gseapy
 #pip install goatools
 #pip install pysam
-#
+#sudo apt install bowtie2
+
 #%%
 
 from IPython import get_ipython
@@ -204,9 +205,10 @@ if meet one window with mean quality < threshold, drop the bases in the
 window and the right part, and then stop. Use cut_right_window_size to set 
 the widnow size, and cut_right_mean_quality to set the mean quality threshold. 
 This is similar as the Trimmomatic SLIDINGWINDOW method
+https://github.com/Simon-Leonard/APERO/tree/master/R
 """
 
-#%% Align sequences to the reference genome
+#%% Align sequences to the reference genome  BWA
 
 try:
   os.mkdir(os.path.join(cur_dir, "results_rna_seq", my_experiment, "BWA"))
@@ -250,6 +252,28 @@ for i in Accessions:
     with open(output_sam, "w") as output_file:
         subprocess.run(command, stdout=output_file, check=True)
 
+#%%  Convert unsorted SAM files to sorted
+def sort_sam_file(input_sam, output_sam):
+    entries = []
+    with pysam.AlignmentFile(input_sam, "r") as samfile:
+        for entry in samfile:
+            entries.append(entry)
+
+    sorted_entries = sorted(entries, key=lambda x: (x.reference_name, x.reference_start))
+    with pysam.AlignmentFile(output_sam, "w", header=samfile.header) as sorted_sam:
+        for entry in sorted_entries:
+            sorted_sam.write(entry)
+
+
+alignment_sam_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "BWA")
+alignment_sam = [sam for sam in os.listdir(alignment_sam_folder) if sam.endswith(".sam") ]  
+
+for alignment in alignment_sam: 
+    input_sam = os.path.join(alignment_sam_folder, alignment)
+    output_sam = os.path.join(alignment_sam_folder, "sorted" + alignment)
+    sort_sam_file(input_sam, output_sam)
+
+
 
 #%% Convert SAM files to BAM files as this is required by APERO
 
@@ -280,21 +304,102 @@ for alignment in alignment_sam:
     output_bam = os.path.join(alignment_sam_folder, os.path.splitext(alignment)[0]+".bam")
     convert_sam_to_bam(input_sam, output_bam)
 
-
-
-
+#%% Convert unsorted to sorted BAM files
 alignment_bam = [bam for bam in os.listdir(alignment_sam_folder) if bam.endswith(".bam") ]  
 
-for bam in alignment_bam: 
-    file_gzip = os.path.join(alignment_sam_folder, bam)
-    with gzip.open(file_gzip, 'rb') as gz_file:
-        content = gz_file.read()
 
-    # Opcionalmente, puedes guardar el contenido descomprimido en un nuevo archivo
-    descompressed = os.path.join(alignment_sam_folder, bam)
-    with open(descompressed, 'wb') as output_file:
-        output_file.write(content)
+for bam in alignment_bam: 
+    input_bam = os.path.join(alignment_sam_folder, bam)    
+    # Archivo de salida CRAM
+    output_bam = os.path.join(alignment_sam_folder, "sorted_"+bam)
+    
+    # Command 1: samtools fixmate
+    fixmate_cmd = ["samtools", "fixmate", "-u", "-m", input_bam, "-"]
+    
+    # Command 2: samtools sort
+    sort_cmd = ["samtools", "sort", "-u", "-@2", "-T", os.path.join(alignment_sam_folder, "sort_tmp"), "-"]
+    
+    
+    # Comando 3: samtools markdup
+    markdup_cmd = ["samtools", "markdup", "-O", "bam,level=1", "-", output_bam]
+
+   
+    # Ejecutar los comandos en secuencia
+    try:
+        # Ejecutar comando 1
+        fixmate_process = subprocess.Popen(fixmate_cmd, stdout=subprocess.PIPE)
         
+        # Ejecutar comando 2 y establecer la entrada del proceso anterior como la salida
+        sort_process = subprocess.Popen(sort_cmd, stdin=fixmate_process.stdout, stdout=subprocess.PIPE)
+        fixmate_process.stdout.close()
+        
+        # Ejecutar comando 3 y establecer la entrada del proceso anterior como la salida
+        markdup_process = subprocess.Popen(markdup_cmd, stdin=sort_process.stdout)
+        sort_process.stdout.close()
+        
+        # Esperar a que se completen todos los procesos
+        fixmate_process.wait()
+        sort_process.wait()
+        markdup_process.wait()
+    
+    except subprocess.CalledProcessError as e:
+        print("Error:", e)
+    
+
+#%% Align sequences to the reference genome  Bowtie2
+
+try:
+  os.mkdir(os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2"))
+except OSError as error:
+    print(error)
+
+
+fastq_filtered_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp")
+fastq_filtered = [fastq for fastq in os.listdir(fastq_filtered_folder) if fastq.endswith(".fastq") ]  
+
+# generate the index genome file
+
+# Comando Bowtie2 para crear la base de datos de referencia
+bowtie2_build_cmd = ["bowtie2-build", reference_genome, "genome"]
+subprocess.run(bowtie2_build_cmd, check=True)
+
+
+#SE data
+for i in fastq_filtered:  
+    fastq_file = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", i)
+    output_sam = os.path.join(cur_dir, "results_rna_seq",
+                              my_experiment, "Bowtie2", i)  +".sam"
+    bowtie2_align_cmd = ["bowtie2", "-x",  "genome", "-U", i,  "-S",  output_sam]
+    subprocess.run(bowtie2_align_cmd, check=True)
+    
+
+
+#PE data
+for i in Accessions:  
+    # Comamand for 
+    input_fastq_r1 = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", "trimmed_"+i+"_1.fastq")
+    input_fastq_r2 = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", "trimmed_"+i+"_2.fastq")
+    output_sam = os.path.join(cur_dir, "results_rna_seq",
+                              my_experiment, "Bowtie2", i)  +".sam"
+    bowtie2_align_cmd = ["bowtie2", "-x", "genome", "-1", input_fastq_r1, 
+                         "-2", input_fastq_r2, "-S", output_sam]
+    subprocess.run(bowtie2_align_cmd, check=True)
+
+
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
 #%% import rpy2.robjects as robjects
 
 
