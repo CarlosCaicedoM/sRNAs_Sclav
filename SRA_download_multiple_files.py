@@ -14,6 +14,8 @@ Created on Thu Apr 14 13:22:39 2022
 #sudo apt install cutadapt
 # conda install -c bioconda fastp
 #sudo apt install bwa
+#sudo apt install bowtie2
+
 #pip install HTSeq
 #pip install pydeseq2
 #conda install -c conda-forge scanpy python-igraph leidenalg
@@ -44,10 +46,12 @@ import matplotlib.pyplot as plt
 
 
 #Create file to download your data
-my_experiment = "S-enterica_APERO"
-my_file = "/SraAccList_S-enterica_APERO.txt"
-reference_genome = "/media/usuario/CACM/Documentos/sRNAs_Sclav/raw_data/S-enterica_APERO/GCF_000210855.2_ASM21085v2_genomic.fna"
-
+#my_experiment = "S-enterica_APERO"
+my_experiment = "S-clavuligerus_Hwang-2019"
+#my_file = "/SraAccList_S-enterica_APERO.txt"
+my_file = "SraAccList_S_clavuligerus_Hwang_2019.txt"
+#reference_genome = "/media/usuario/CACM/Documentos/sRNAs_Sclav/raw_data/S-enterica_APERO/GCF_000210855.2_ASM21085v2_genomic.fna"
+reference_genome = "/home/usuario/Documentos/sRNAS_Sclav/raw_data/S-clavuligerus_ATCC27064_annotations/GCF_005519465.1_ASM551946v1_genomic.fna"
 
 cur_dir = os.getcwd()
 path = os.path.join(cur_dir, "raw_data", my_experiment) 
@@ -58,7 +62,7 @@ try:
 except OSError as error: 
     print(error) 
 
-my_data = cur_dir+my_file
+my_data = os.path.join(cur_dir, my_file)
 #If you want to remove all whitespace characters (newlines and spaces) from the end of each line
 with open(my_data) as f:
     lines = [line.rstrip() for line in f]
@@ -100,7 +104,7 @@ except OSError as error:
 fastq_command.append("-o")
 fastq_command.append(fastqc_outdir)
 fastq_command.append("-t")
-fastq_command.append("4")
+fastq_command.append("20")   #change the number of threads accordingly
 #--noextract
 subprocess.call(fastq_command)
 
@@ -118,10 +122,6 @@ multiQC_command.append(os.path.join(cur_dir, "results_rna_seq", my_experiment, "
 multiQC_command.append("-f")
 multiQC_command.append("--profile-runtime") 
 subprocess.call(multiQC_command)
-
-
-
-
 
 #Filter the adpaters
 try:
@@ -144,8 +144,43 @@ for i,j  in enumerate(fastq_files):
                   os.path.join(cur_dir, "results_rna_seq", my_experiment, "cutadapt", "trimmed_"+j), fastq_files_path[i]]
 
     subprocess.call(cutadapt_command)
+
+#%% 
+
+
+                  os.path.join(cur_dir, "results_rna_seq", my_experiment, "cutadapt", "trimmed_"+j), fastq_files_path[i]]
+
+fastq_command =[]  
+for i in fastq_files:
+    fastq_command.append(os.path.join(path, i))
+fastq_command.insert(0, "fastqc")
+fastqc_outdir=os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastqc")
+
+try:
+    os.mkdir("results_rna_seq")
+except OSError as error:
+    print(error)  
+
+try:
+    os.mkdir(os.path.join("results_rna_seq", my_experiment))
+except OSError as error:
+    print(error)
+
+try:
+    os.mkdir(fastqc_outdir)
+except OSError as error:
+    print(error)  
+   
+fastq_command.append("-o")
+fastq_command.append(fastqc_outdir)
+fastq_command.append("-t")
+fastq_command.append("20")   #change the number of threads accordingly
+#--noextract
+subprocess.call(fastq_command)
+
+   
+subprocess.call(multiQC_command)
               
-                 
                  
 #%% Quality control and filtering by fastp
 try:
@@ -159,7 +194,7 @@ for i,j  in enumerate(fastq_files):
     fastp_command=["fastp", 
                    "-i", fastq_files_path[i], "-o",  
                    os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", "trimmed_"+j), 
-                   "-j", j+".json", "-h", j+".html"]
+                   "-j", j+".json", "-h", j+".html", "-w", "20"]
 
     subprocess.call(fastp_command)
 
@@ -173,7 +208,7 @@ for i,j  in enumerate(Accessions):
                                 my_experiment, "fastp", "trimmed_"+j+"_1.fastq"), 
                    "-O", os.path.join(cur_dir, "results_rna_seq",
                                 my_experiment, "fastp", "trimmed_"+j+"_2.fastq"),
-                   "-j", j+".json", "-h", j+".html"]
+                   "-j", j+".json", "-h", j+".html", "-w", "20"]
 
     subprocess.call(fastp_command)
 
@@ -184,9 +219,6 @@ for file_name in reports:
 
 
 
-
-"""fastp -i in.R1.fq.gz -I in.R2.fq.gz -o out.R1.fq.gz -O out.R2.fq.gz
-for paired end data modify accordingly"""
 
 #adapter trimming is enabled by default
 #quality filtering is enabled by default. 
