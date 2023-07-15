@@ -22,7 +22,7 @@ Created on Thu Apr 14 13:22:39 2022
 #pip install gseapy
 #pip install goatools
 
-#%%
+#%% Import libraries required
 
 from IPython import get_ipython
 get_ipython().magic('reset -sf')
@@ -44,7 +44,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-
+#%% get the data neccesary to run this pipeline
 #Create file to download your data
 #my_experiment = "S-enterica_APERO"
 my_experiment = "S-clavuligerus_Hwang-2019"
@@ -79,12 +79,8 @@ fastq_files = [file for file in os.listdir(path) if file.endswith(".fastq") ]
 fastq_files_path = []
 for i in fastq_files:
     fastq_files_path.append(os.path.join(path, i))
-    
-fastq_command =[]  
-for i in fastq_files:
-    fastq_command.append(os.path.join(path, i))
-fastq_command.insert(0, "fastqc")
-fastqc_outdir=os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastqc")
+
+#%% Initial quality control of the data with fastqc
 
 try:
     os.mkdir("results_rna_seq")
@@ -95,12 +91,17 @@ try:
     os.mkdir(os.path.join("results_rna_seq", my_experiment))
 except OSError as error:
     print(error)
-
+    
+fastqc_outdir=os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastqc")
 try:
     os.mkdir(fastqc_outdir)
 except OSError as error:
-    print(error)  
-   
+    print(error) 
+
+fastq_command =[]  
+for i in fastq_files:
+    fastq_command.append(os.path.join(path, i))
+fastq_command.insert(0, "fastqc")
 fastq_command.append("-o")
 fastq_command.append(fastqc_outdir)
 fastq_command.append("-t")
@@ -123,7 +124,8 @@ multiQC_command.append("-f")
 multiQC_command.append("--profile-runtime") 
 subprocess.call(multiQC_command)
 
-#Filter the adpaters
+#%% Filter the adpaters with cutadapt
+"""
 try:
   os.mkdir(os.path.join(cur_dir, "results_rna_seq", my_experiment, "cutadapt"))
 except OSError as error:
@@ -144,44 +146,44 @@ for i,j  in enumerate(fastq_files):
                   os.path.join(cur_dir, "results_rna_seq", my_experiment, "cutadapt", "trimmed_"+j), fastq_files_path[i]]
 
     subprocess.call(cutadapt_command)
+"""   
 
-#%% 
+#%% Fastqc after cutadapt
 
 
-                  os.path.join(cur_dir, "results_rna_seq", my_experiment, "cutadapt", "trimmed_"+j), fastq_files_path[i]]
-
-fastq_command =[]  
-for i in fastq_files:
-    fastq_command.append(os.path.join(path, i))
-fastq_command.insert(0, "fastqc")
-fastqc_outdir=os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastqc")
-
+fastq_command_cutadapt =[]  
+for i, j  in enumerate(fastq_files):
+    fastq_command_cutadapt.append(os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", "trimmed_"+j))
+fastqc_trimmed=os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastqc_cutadapt")
 try:
-    os.mkdir("results_rna_seq")
+    os.mkdir(fastqc_trimmed)
 except OSError as error:
-    print(error)  
+    print(error) 
 
+   
+fastq_command_cutadapt.insert(0, "fastqc")
+fastq_command_cutadapt.append("-o")
+fastq_command_cutadapt.append(fastqc_trimmed)
+fastq_command_cutadapt.append("-t")
+fastq_command_cutadapt.append("20")   #change the number of threads accordingly
+#--noextract
+subprocess.call(fastq_command_cutadapt)
+
+#Summarize all the fastqc results with multiQC
 try:
-    os.mkdir(os.path.join("results_rna_seq", my_experiment))
+    os.mkdir(os.path.join(cur_dir, "results_rna_seq", my_experiment, "multiqc_cutadapt"))
 except OSError as error:
     print(error)
-
-try:
-    os.mkdir(fastqc_outdir)
-except OSError as error:
-    print(error)  
-   
-fastq_command.append("-o")
-fastq_command.append(fastqc_outdir)
-fastq_command.append("-t")
-fastq_command.append("20")   #change the number of threads accordingly
-#--noextract
-subprocess.call(fastq_command)
-
-   
+ 
+multiQC_command = ["multiqc", fastqc_trimmed]
+multiQC_command.append("-n")
+multiQC_command.append(my_experiment)
+multiQC_command.append("-o")
+multiQC_command.append(os.path.join(cur_dir, "results_rna_seq", my_experiment, "multiqc_cutadapt"))
+multiQC_command.append("-f")
+multiQC_command.append("--profile-runtime") 
 subprocess.call(multiQC_command)
-              
-                 
+
 #%% Quality control and filtering by fastp
 try:
   os.mkdir(os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp"))
@@ -193,8 +195,8 @@ except OSError as error:
 for i,j  in enumerate(fastq_files):
     fastp_command=["fastp", 
                    "-i", fastq_files_path[i], "-o",  
-                   os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", "trimmed_"+j), 
-                   "-j", j+".json", "-h", j+".html", "-w", "20"]
+                   os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", "trimmed_"+j),
+                   "--cut_right", "-j", j+".json", "-h", j+".html", "-w", "16"]
 
     subprocess.call(fastp_command)
 
@@ -208,7 +210,7 @@ for i,j  in enumerate(Accessions):
                                 my_experiment, "fastp", "trimmed_"+j+"_1.fastq"), 
                    "-O", os.path.join(cur_dir, "results_rna_seq",
                                 my_experiment, "fastp", "trimmed_"+j+"_2.fastq"),
-                   "-j", j+".json", "-h", j+".html", "-w", "20"]
+                   "-j", j+".json", "-h", j+".html", "-w", "16", "--cut_right"]
 
     subprocess.call(fastp_command)
 
@@ -222,7 +224,7 @@ for file_name in reports:
 
 #adapter trimming is enabled by default
 #quality filtering is enabled by default. 
- #length filtering is enabled by default.
+#length filtering is enabled by default.
 #-w number of threads 
 #-detect_adapter_for_pe        
 #by default, the auto-detection for adapter is for SE data input only,
@@ -235,6 +237,42 @@ window and the right part, and then stop. Use cut_right_window_size to set
 the widnow size, and cut_right_mean_quality to set the mean quality threshold. 
 This is similar as the Trimmomatic SLIDINGWINDOW method
 """
+
+
+#%% Fastqc after trimming
+
+fastq_command_fastp =[]  
+for i, j  in enumerate(fastq_files):
+    fastq_command_fastp.append(os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", "trimmed_"+j))
+fastqc_trimmed=os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastqc_trimmed")
+try:
+    os.mkdir(fastqc_trimmed)
+except OSError as error:
+    print(error) 
+
+   
+fastq_command_fastp.insert(0, "fastqc")
+fastq_command_fastp.append("-o")
+fastq_command_fastp.append(fastqc_trimmed)
+fastq_command_fastp.append("-t")
+fastq_command_fastp.append("20")   #change the number of threads accordingly
+#--noextract
+subprocess.call(fastq_command_fastp)
+
+#Summarize all the fastqc results with multiQC
+try:
+    os.mkdir(os.path.join(cur_dir, "results_rna_seq", my_experiment, "multiqc_fastp"))
+except OSError as error:
+    print(error)
+ 
+multiQC_command = ["multiqc", fastqc_trimmed]
+multiQC_command.append("-n")
+multiQC_command.append(my_experiment)
+multiQC_command.append("-o")
+multiQC_command.append(os.path.join(cur_dir, "results_rna_seq", my_experiment, "multiqc_fastp"))
+multiQC_command.append("-f")
+multiQC_command.append("--profile-runtime") 
+subprocess.call(multiQC_command)
 
 #%% Align sequences to the reference genome
 
