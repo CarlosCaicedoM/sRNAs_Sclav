@@ -12,11 +12,6 @@ Created on Thu Jan  6 22:45:32 2022
 #conda install -c conda-forge biopython 
 #conda install -c bioconda blast
 #conda install -c bioconda transtermhp 
-#pip install wget
-# conda install -c bioconda clustalw
-# conda install -c bioconda rnaz
-# conda install -c bioconda infernal
-# conda install -c bioconda easel 
 
 #%%  Functions
 from IPython import get_ipython
@@ -772,13 +767,30 @@ def processFile(filePath, outputPath):
     
 #%%  Workflow
 
+#Extract IGRs from the genomes to compare
+
 #Define a folder to store temporary files and intermediate results
+
+
 my_current_dirs = [name for name in os.listdir(".") if os.path.isdir(name)]
+
+
+
+
 if "results_sRNA" in my_current_dirs:
     shutil.rmtree("results_sRNA")
     os.mkdir("results_sRNA")
 else:
     os.mkdir("results_sRNA")
+
+"""
+for dir_path in my_current_dirs:
+    try:
+        shutil.rmtree(dir_path)
+    except OSError as e:
+        print("Error: %s : %s" % (dir_path, e.strerror))
+"""
+
 
 os.mkdir(os.path.join("results_sRNA", "IGRs_blast"))
 os.mkdir(os.path.join("results_sRNA", "IGRs_cluster"))
@@ -788,19 +800,23 @@ os.mkdir(os.path.join("results_sRNA", "IGRs"))
 
 
 #Define the folder with the genomes to analyze
-#my_input_dir = "/media/usuario/lab_bioinformatica/Carlos_Caicedo-Montoya/sRNAs_Sclav/raw_data/Genbank_group1/"
-my_input_dir = "raw_data/Genbank_group1/"
+my_input_dir = "/media/usuario/lab_bioinformatica/Carlos_Caicedo-Montoya/sRNAs_Sclav/raw_data/Genbank_group1/"
+#my_input_dir = "raw_data/Genbank_group1/"
 #my_input_dir = "/media/usuario/lab_bioinformatica/Carlos_Caicedo-Montoya/sRNAs_Sclav/test_Actinoplanes/"
 
 
 #to get the data consider to use the following comand
+
 """
 conda install -c bioconda ncbi-genome-download
 ncbi-genome-download bacteria -F genbank -A Streptomyces_Assemby_Accession_Group1_Sclav.txt -v
 
 #To unzip multiple files
 chmod +x unzip_several.sh
-./unzip_several.sh"""
+./unzip_several.sh
+
+"""
+
 
 #Extract IGRs for the genomes in my input directory
 my_files = os.listdir(my_input_dir)
@@ -821,23 +837,28 @@ for i in my_results:
    trim_sequences(os.path.join("results_sRNA", "IGRs", i), 40, 40)
    remove(os.path.join("results_sRNA", "IGRs", i))
 
+
 ## Create the databases
+
 #my_reference = "GCF_001553785.1_ASM155378v1_genomic.gbff"  
-my_reference = "GCF_005519465.1_ASM551946v1_genomic.gbff"
+my_reference = "GCF_005519465.1_ASM551946v1_genomic.gbk"
 
 #install blast + suite
 make_blast_db()
 
+         
 ### Run reciprocal best blast 
 threads = 8
 evalue = 1e-5
 rbbh(evalue, threads)
+
 
 ### Analyze_blast_results
 rbbh_concat=analyze_blast_results()   
     
 #Save RBBH results
 rbbh_concat.to_csv ('results_sRNA/IGRs_blast/RBBH.csv', index = True, header=True)
+    
     
 #Get the RBBH ids in order to carry out multiple alignment in subsequent steps  
 rbbh_concat.reset_index(inplace=True)  
@@ -846,9 +867,12 @@ rbbh_id = rbbh_id.groupby('query_x')['subject_x'].agg(' '.join)
 rbbh_dict = rbbh_id.to_dict()
         
 #Extract the sequences conserved in the reference genome 
+
 extract_conserved_sequences_reference()         
 
+
 #Create the headers for the sequences conserved in IGR clusters
+
 for key, value in rbbh_dict.items():
     IGRs =  value
     list_1 = IGRs.split(" ")
@@ -861,6 +885,10 @@ for key, value in rbbh_dict.items():
                 output.write(str(row) + '\n')
                 
 #Extract IGR clusters and align them
+
+#muscle_exe = "./muscle"
+#makemuscle executable
+#subprocess.call(["chmod", "+x", "muscle"])
 concat_IGRs_reduced_fasta() 
 clustalw_aln()
 
@@ -870,20 +898,27 @@ for file_name in alignments:
     full_file_name = os.path.join("results_sRNA/IGRs_cluster", file_name)
     shutil.move(full_file_name, "results_sRNA/IGRs_alignments")
 
+
 # Convert genbank to fasta for the reference genome
 my_reference_fasta = "results_sRNA/reference_results/" + my_assembly_name(my_reference) +".fasta"
 records = SeqIO.parse(os.path.join(my_input_dir,  my_reference),  "genbank")
 count = SeqIO.write(records, my_reference_fasta , "fasta")
 print("Converted %i records" % count)
 
+
 #  Find promoters with G4PromFinder
 os.mkdir(os.path.join("results_sRNA","G4PromFinder"))
 G4PromFinder(my_reference_fasta)
 
+
+
+
 #Call promoter results from G4PromFinder or promotech
 promoters = pd.read_table("results_sRNA/G4PromFinder/" + my_assembly_name(my_reference)+ "_Promoter-coordinates.txt", sep=",")
+ 
 promotech_results = "Promotech"
 promotech = [prom for prom in os.listdir(promotech_results) if prom.endswith(".csv") ]  
+
 promotech_table = []
 for i in promotech:
     predictions = pd.read_csv("Promotech/" + i, sep="\t")
@@ -891,8 +926,10 @@ for i in promotech:
 
 promoters_promotech = pd.concat(promotech_table, axis=0)
 
+
 #Read the data from the conserved IGRs
 IGRs_conserved_reference = os.path.join("results_sRNA", "reference_results", "conserved_IGRs_my_reference.fasta")
+
 headers_IGRs_conserved = []
 flanking_genes = []
 coordinates = []
@@ -915,9 +952,11 @@ IGRs_conserved_dict = {'headers':headers_IGRs_conserved,
 
 IGRs_conserved_dict2 = dict(zip(headers_IGRs_conserved, coordinates))
 
+
 #Locate promoters predicted by G4PromFinder or Promotech in the conserved IGRs
 empty_lists =  [[] for _ in range(len(coordinates))]
 promoters_in_IGRs = {headers_IGRs_conserved[i]:empty_lists[i] for i in range(len(headers_IGRs_conserved))}
+
 print("Locating promoter in IGRs sequences")
 
 for key, value in IGRs_conserved_dict2.items():
@@ -928,6 +967,7 @@ for key, value in IGRs_conserved_dict2.items():
             promoter_region = (j.start, j.end, j.strand)
             promoters_in_IGRs[key].append(promoter_region)
     
+
 without_promoter = []
 for key, value in promoters_in_IGRs.items():
     if len(value)==0:
@@ -937,9 +977,11 @@ number_of_promoters = []
 for key, value in promoters_in_IGRs.items():
     number_of_promoters.append(len(value))
 
+
 #Save promoters in IGRs
 df2= pd.DataFrame.from_dict(promoters_in_IGRs, orient="index")
 df2.to_csv ('results_sRNA/reference_results/Promoters_in_conserved_IGRs.csv', index = True, header = False)
+
 
 #Determine terminators in the genome
 os.mkdir(os.path.join("results_sRNA", "TransTermHP"))
@@ -976,7 +1018,9 @@ terminators_transtermhp = pd.concat(transterm_table, axis=0)
 #Locate terminators predicted by TrasnTermHP in the conserved IGRs
 empty_lists2 =  [[] for _ in range(len(coordinates))]
 terminators_in_IGRs = {headers_IGRs_conserved[i]:empty_lists2[i] for i in range(len(headers_IGRs_conserved))}
+
 print("Locating terminators in IGRs sequences")
+
 for key, value in IGRs_conserved_dict2.items():
     start_IGR = int(IGRs_conserved_dict2[key].split("-")[0])
     end_IGR = int(IGRs_conserved_dict2[key].split("-")[1])
@@ -1002,9 +1046,11 @@ for key, value in terminators_in_IGRs.items():
 
 with_terminator = len(terminators_in_IGRs) - len(without_terminator)
 
+
 #Run RNAz using the conserved IGR sequences
 subprocess.call('./run_RNAz_local.sh')
 rnaz_results = [rnaz for rnaz in os.listdir("results_sRNA/RNAz_out") if rnaz.endswith(".out") ]
+
 RNAz_all = os.path.join("results_sRNA/RNAz_out", "RNAz_all.out")
 with open(RNAz_all , 'w') as outfile:
     for rnaz in rnaz_results:
@@ -1017,6 +1063,7 @@ with open(RNAz_all , 'w') as outfile:
 sequences_reference_rnaz= set(line for line in open(RNAz_all) if (line.startswith(">NZ_CP027858.1") or line.startswith(">NZ_CP027859.1")))
 sequences_reference_rnaz_list = list(sequences_reference_rnaz)
 temp=[l.strip('\n\r') for l in sequences_reference_rnaz_list ]
+
 
 #Get FASTA sequence of IGRs with conserved secondary structure 
 input_file = os.path.join("results_sRNA/reference_results", "conserved_IGRs_my_reference.fasta")
@@ -1032,23 +1079,6 @@ if count < len(temp):
 my_conserved_IGRs_RNAz = os.path.join("results_sRNA/reference_results", "conserved_IGRs_my_reference_RNAz.fasta")
 rfam_db = os.path.join(os.getcwd(), "raw_data", "rfam_sequences", "Rfam.fa")
 
-#Download rfam database
-ulr_rfam_fasta = "https://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/fasta_files/Rfam.fa.gz"
-filename_rfam_fasta = wget.download(ulr_rfam_fasta)
-with gzip.open(filename_rfam_fasta, 'rb') as f_in:
-    with open('Rfam.fa', 'wb') as f_out:
-        shutil.copyfileobj(f_in, f_out)
-
-#Move the downloaded Rfam database to the corresponding folder
-os.mkdir(os.path.join("raw_data", "rfam_sequences"))
-shutil.move("Rfam.fa", os.path.join(os.getcwd(), "raw_data", "rfam_sequences"))
-
-#make Rfam.fa as blast db
-cline_rfam_db = NcbimakeblastdbCommandline(dbtype="nucl", 
-                                   input_file=rfam_db, 
-                                   out = rfam_db)
-stdout, stderr = cline_rfam_db()
-
 #BLASTn search
 cline_rfam = NcbiblastnCommandline(query=my_conserved_IGRs_RNAz, 
                                   db=rfam_db,
@@ -1062,67 +1092,58 @@ cline_rfam = NcbiblastnCommandline(query=my_conserved_IGRs_RNAz,
                                   outfmt="6 qseqid sseqid pident qcovs qlen slen length bitscore evalue")
 stdout, stderr = cline_rfam()
 
+
 rfam_results = pd.read_table(os.path.join("results_sRNA", "reference_results", "my_conserved_IGRs_RNAz_blastn_out.txt"), sep='\t', header=None)
+
 rfam_results.columns = ["query", "subject", "identity", "coverage",
                    "qlength", "slength", "alength",
                    "bitscore", "E-value"]
 rfam_results.set_index("query", inplace=True)
 
 #concatenate the results of Promotech and TranstermHP in the conserved IGRs
+
 test = pd.concat([df2, df3], axis = 1)
+
+
 rnaz_ids = []
 for rnaz in records_rnaz:
     rnaz_ids.append(rnaz.id)
 
 have_rnaz =  [True for _ in range(len(rnaz_ids))]
+
 rnaz_dict = dict(zip(rnaz_ids, have_rnaz))
 rnaz_df = pd.DataFrame.from_dict(rnaz_dict, orient="index")
+
 test2 = pd.concat([test, rnaz_df], axis = 1)
+
+
 putative_sRNAs_rfam_blast = pd.concat([test2, rfam_results], axis = 1)
 
 
-#Anotate with Infernal against RFAM database
+#Anotar con RFAM
+
+
 url = 'ftp://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/Rfam.cm.gz'
 filename = wget.download(url)
 url2="ftp://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/Rfam.clanin"
 filename2  = wget.download(url2)
+
+
 with gzip.open(filename, 'rb') as f_in:
-    with open('Rfam.cm', 'wb') as f_out:
+    with open(' Rfam.cm', 'wb') as f_out:
         shutil.copyfileobj(f_in, f_out)
 
-# Use the Infernal program cmpress to index the Rfam.cm file
+
 os.mkdir("results_sRNA/Infernal")
-Infernal_Results = os.path.join("results_sRNA/Infernal",my_reference + ".cmscan")
+Inta_Results = os.path.join("results_sRNA/Infernal","Infernal_Sclav")
 cmd_cmpress = ["cmpress", 'Rfam.cm']
 subprocess.call(cmd_cmpress)
 
-#Determine the total database size for the genome you are annotating.
-#You will need to supply this number to Infernal to assure that the E-values 
-#reported by the cmscan program run in the next step are accurate.
-#You can use the esl-seqstat program from the to help with this.
-cdm_eslseqstat = ["esl-seqstat", my_reference_fasta]
-subprocess.call(cdm_eslseqstat)
+#corregir gunzip con python
 
-#Use the cmscan program to annotate RNAs represented 
-#in Rfam in the Streptomyces clavuligerus ATCC 27064 genome.
-reference_fasta = SeqIO.parse(my_reference_fasta,  "fasta")
-records_reference_fasta = [r for r in SeqIO.parse(my_reference_fasta, "fasta")] 
-total_length = 0
-for j in records_reference_fasta:
-    total_length=total_length+len(j.seq)
+esl-seqstat infernal-1.1.2/mrum-genome.fa
 
-Z_cmscan = total_length*2/1e6        
-output_cmscan = my_reference+".tblout"  
-cmd_cmscan = ["cmscan", "-Z", str(Z_cmscan),  "--cut_ga",
-              "--rfam",  "--nohmmonly",  "--tblout",  output_cmscan, 
-              "--fmt",  "2",  "--clanin",  "Rfam.clanin",  "Rfam.cm", 
-              my_reference_fasta]
-
-#We have to create the file, then send the subprocess stdout to the file
-rfam_output = open(Infernal_Results, "w") # this creates the file
-subprocess.run(cmd_cmscan, stdout=rfam_output) # this sends it to f
-shutil.move(output_cmscan, "results_sRNA/Infernal")
-
+cmscan -Z 5.874406 --cut_ga --rfam --nohmmonly --tblout mrum-genome.tblout --fmt 2 --clanin Rfam.clanin Rfam.cm tutorial/mrum-genome.fa > mrum-genome.cmscan
 
 
 #Definir orientacion correcta
@@ -1324,13 +1345,31 @@ x = np.quantile(np.asarray(lengths), values)
 f.savefig ("reference_results/IGRs_boxplot.pdf", dpi=1200, format = "pdf")
 
 
-#determine GC content of intergenic regions
-#GC content of IGRs and conserved IGRs
+#%% determine GC content of intergenic regions
 from Bio.SeqUtils import GC 
 from Bio.Seq import Seq
 
-nucleotide = Seq("GACTGACTTCGA") 
-GC(nucleotide) 
+GCs = []
+file = "/home/usuario/Documentos/sRNAS_Sclav/results_sRNA/IGRs/GCF_005519465_IGRs_reduced.fasta"
+for seq_record in SeqIO.parse(file, "fasta"):
+    seq_record.seq
+    GC_perc =  GC(seq_record.seq)
+    GCs.append(GC_perc)
+
+import numpy as np
+GCs = np.asarray(GCs)
+
+GC_mean = np.mean(GCs)
+
+
+
+
+
+
+
+
+
+ 
 import subprocess 
 i = "conserved_IGRs_my_reference.fasta"
 num = len([1 for line in open(i) if line.startswith(">")])    
