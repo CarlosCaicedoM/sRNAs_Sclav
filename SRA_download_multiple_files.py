@@ -271,6 +271,10 @@ subprocess.call(fastq_command_fastp)
 #Summarize all the fastqc results with multiQC
 MultiQC(fastqc_trimmed, "multiqc_fastp")
 
+
+
+
+
 #%% Align sequences to the reference genome
 
 
