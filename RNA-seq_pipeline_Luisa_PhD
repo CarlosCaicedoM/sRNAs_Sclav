@@ -59,7 +59,7 @@ my_experiment = "S-clav_mutants_RNA-seq"
 reference_genome = "/home/usuario/Documentos/sRNAS_Sclav/raw_data/S-clavuligerus_ATCC27064_annotations/GCF_005519465.1_ASM551946v1_genomic.fna"
 cur_dir = os.getcwd()
 #path_rawdata = os.path.join(cur_dir, "raw_data")
-path_rawdata = os.path.join(cur_dir, "RNA-seq_OMEGA")
+path_rawdata = os.path.join(cur_dir, "raw_data")
 
 
 fastq_files = [file for file in os.listdir(path_rawdata) if file.endswith(".gz") ]
@@ -153,7 +153,8 @@ for i,j  in enumerate(experiments):
                                 my_experiment, "fastp", "trimmed_"+j+"_R1.fastq.gz"), 
                    "-O", os.path.join(cur_dir, "results_rna_seq",
                                 my_experiment, "fastp", "trimmed_"+j+"_R2.fastq.gz"),
-                   "-j", j+".json", "-h", j+".html", "-w", "16", "--cut_right"]
+                   "-j", j+".json", "-h", j+".html", "-w", "16", "--cut_right", 
+                   "--detect_adapter_for_pe"]
 
     subprocess.call(fastp_command)
 
@@ -172,6 +173,7 @@ for file_name in reports:
 #-detect_adapter_for_pe        
 #by default, the auto-detection for adapter is for SE data input only,
 #turn on this option to enable it for PE data
+
 
 """
 -r, --cut_right move a sliding window from front to tail, 
@@ -315,21 +317,9 @@ subprocess.run(bowtie2_build_cmd, check=True)
 experiments_Streptomyces = experiments
 experiments_Streptomyces.remove('PACP72H-1')
 experiments_Streptomyces.remove('PACP72H-2')
-
-#fastq_filtered.remove('PACP72H-2_1.fastq.gz')
-#fastq_filtered.remove('PACP72H-2_2.fastq.gz')
-
-#SE data
-for i in fastq_filtered:  
-    fastq_file = os.path.join(cur_dir, "results_rna_seq", my_experiment, "cutadapt", i)
-    output_sam = os.path.join(cur_dir, "results_rna_seq",
-                              my_experiment, "Bowtie2_cutadapt", i)  +".sam"
-    bowtie2_align_cmd = ["bowtie2", "-p", "20", "-x",  "genome", "-U", fastq_file,  "-S",  output_sam]
-    subprocess.run(bowtie2_align_cmd, check=True)
     
 #PE data
 for i in experiments_Streptomyces:  
-    # Comamand for 
     input_fastq_r1 = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastq_rRNA_removed", i+"_1.fastq.gz")
     input_fastq_r2 = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastq_rRNA_removed", i+"_2.fastq.gz")
     output_sam = os.path.join(cur_dir, "results_rna_seq",
@@ -337,13 +327,14 @@ for i in experiments_Streptomyces:
     bowtie2_align_cmd = ["bowtie2", "-p", "18", "-x", "genome", "-1", input_fastq_r1, 
                          "-2", input_fastq_r2, "-S", output_sam]
     subprocess.run(bowtie2_align_cmd, check=True)
-    
+
+# generate the index genome file for the Bacilllus genomes
 bacillus=['PACP72H-1', 'PACP72H-2']
 Reference_genome_bacillus ='/home/usuario/Documentos/Luisa_PhD/raw_data/Bacillus/GCF_030252385.1_ASM3025238v1_genomic.fna'
-
 bowtie2_build_cmd = ["bowtie2-build", Reference_genome_bacillus, "genome_bacillus"]
 subprocess.run(bowtie2_build_cmd, check=True)
 
+#Perform the alignments against the bacillus genome
 for i in bacillus:  
     # Comamand for 
     input_fastq_r1 = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastq_rRNA_removed", i+"_1.fastq.gz")
@@ -353,11 +344,24 @@ for i in bacillus:
     bowtie2_align_cmd = ["bowtie2", "-p", "20", "-x", "genome_bacillus", "-1", input_fastq_r1, 
                          "-2", input_fastq_r2, "-S", output_sam]
     subprocess.run(bowtie2_align_cmd, check=True)
-    
+
+#Perform the alignments against the bacillus genome FOR THE COCULTURE
+
+bacillus_coculture=['PAP72H-1', 'PAP72H-2']
+for i in bacillus_coculture:  
+    # Comamand for 
+    input_fastq_r1 = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastq_rRNA_removed", i+"_1.fastq.gz")
+    input_fastq_r2 = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastq_rRNA_removed", i+"_2.fastq.gz")
+    output_sam = os.path.join(cur_dir, "results_rna_seq",
+                              my_experiment, "Bowtie2", i)  + "_Bacillus"+".sam"
+    bowtie2_align_cmd = ["bowtie2", "-p", "20", "-x", "genome_bacillus", "-1", input_fastq_r1, 
+                         "-2", input_fastq_r2, "-S", output_sam]
+    subprocess.run(bowtie2_align_cmd, check=True)
+
 
 #%% Convert SAM files to BAM files 
 
-alignment_sam_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2_cocultivo")
+alignment_sam_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2")
 alignment_sam = [sam for sam in os.listdir(alignment_sam_folder) if sam.endswith(".sam") ]  
 
 
@@ -472,11 +476,8 @@ for i in alignment_bam_sorted:
 
 
 
-#%% Alinear pseudomonas
 
-
-
-#%%  
+#%%  Delete sam files
 
 def delete_files_aln(folder, suffix):
     files = os.listdir(folder)
@@ -484,8 +485,6 @@ def delete_files_aln(folder, suffix):
         if file.endswith(suffix):
             path_file = os.path.join(folder, file)
             os.remove(path_file)
-
-
 
 delete_files_aln(alignment_sam_folder, ".sam")
 
@@ -524,5 +523,3 @@ for b in bam_files:
 #If the reads are PE you must specify 
 #"-r", "name"
 # "-s", "no" for non-stranded data
-
-
