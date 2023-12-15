@@ -50,12 +50,9 @@ import multiprocessing
 
 #%% get the data neccesary to run this pipeline
 #Create file to download your data
-#my_experiment = "S-enterica_APERO"
 my_experiment = "S-clavuligerus_Hwang-2019"
-#my_file = "/SraAccList_S-enterica_APERO.txt"
 my_file = "SraAccList_S_clavuligerus_Hwang_2019.txt"
-#reference_genome = "/media/usuario/CACM/Documentos/sRNAs_Sclav/raw_data/S-enterica_APERO/GCF_000210855.2_ASM21085v2_genomic.fna"
-reference_genome = "/home/usuario/Documentos/sRNAS_Sclav/raw_data/S-clavuligerus_ATCC27064_annotations/GCF_005519465.1_ASM551946v1_genomic.fna"
+reference_genome = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/S-clavuligerus_ATCC27064_annotations/GCF_005519465.1_ASM551946v1_genomic.fna"
 
 cur_dir = os.getcwd()
 path = os.path.join(cur_dir, "raw_data", my_experiment) 
@@ -327,14 +324,14 @@ try:
 except OSError as error:
     print(error)
 
-
+#Change the folder accordingly in order to use the correct files
 fastq_filtered_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "cutadapt")
 fastq_filtered = [fastq for fastq in os.listdir(fastq_filtered_folder) if fastq.endswith(".fastq") ]  
 
 # generate the index genome file
 
 # Comando Bowtie2 para crear la base de datos de referencia
-bowtie2_build_cmd = ["bowtie2-build", reference_genome, "genome"]
+bowtie2_build_cmd = ["bowtie2-build", reference_genome, "SCLAV"]
 subprocess.run(bowtie2_build_cmd, check=True)
 
 
@@ -343,7 +340,7 @@ for i in fastq_filtered:
     fastq_file = os.path.join(cur_dir, "results_rna_seq", my_experiment, "cutadapt", i)
     output_sam = os.path.join(cur_dir, "results_rna_seq",
                               my_experiment, "Bowtie2_cutadapt", i)  +".sam"
-    bowtie2_align_cmd = ["bowtie2", "-p", "20", "-x",  "genome", "-U", fastq_file,  "-S",  output_sam]
+    bowtie2_align_cmd = ["bowtie2", "-p", "20", "-x",  "SCLAV", "-U", fastq_file,  "-S",  output_sam]
     subprocess.run(bowtie2_align_cmd, check=True)
     
 
@@ -355,12 +352,12 @@ for i in Accessions:
     input_fastq_r2 = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", "trimmed_"+i+"_2.fastq")
     output_sam = os.path.join(cur_dir, "results_rna_seq",
                               my_experiment, "Bowtie2", i)  +".sam"
-    bowtie2_align_cmd = ["bowtie2", "-p", "20", "-x", "genome", "-1", input_fastq_r1, 
+    bowtie2_align_cmd = ["bowtie2", "-p", "20", "-x", "SCLAV", "-1", input_fastq_r1, 
                          "-2", input_fastq_r2, "-S", output_sam]
     subprocess.run(bowtie2_align_cmd, check=True)
 
 
-#%% Convert SAM files to BAM files as this is required by APERO
+#%% Convert SAM files to BAM 
 
 
 alignment_sam_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2")
@@ -432,16 +429,16 @@ for bam in alignment_bam:
         print("Error:", e)
 #%% 
 
-def delete_files_aln(folder, prefix):
+def delete_files_aln(folder, suffix):
     files = os.listdir(folder)
     for file in files:
-        if file.startswith(prefix):
+        if file.endswith(suffix):
             path_file = os.path.join(folder, file)
             os.remove(path_file)
 
 
 
-delete_files_aln(alignment_sam_folder, "trimmed")
+delete_files_aln(alignment_sam_folder, ".sam")
 
 
 #%% count features with htseq-count
@@ -454,7 +451,7 @@ except OSError as error:
 
 reference_genome_gtf= "/home/usuario/Documentos/sRNAS_Sclav/raw_data/S-clavuligerus_ATCC27064_annotations/GCF_005519465.1_ASM551946v1_genomic.gtf"
 bam_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2")
-bam_files = [bam for bam in os.listdir(bam_folder) if bam.endswith(".bam") ]  
+bam_files = [bam for bam in os.listdir(bam_folder) if (bam.endswith(".bam") &  bam.startswith("sorted"))]  
 
 
 for b in bam_files:  
@@ -465,7 +462,7 @@ for b in bam_files:
 
     # Comando para HTSeq-count
     command_htseq = ["htseq-count", "-f", "bam", "-t", 
-               "gene", "-i", "gene_id", "-n", "20", bam_file, reference_genome_gtf]
+               "gene", "-i", "gene_id", "-n", "20", "-r", "pos", bam_file, reference_genome_gtf]
 
     # Ejecutar el comando y redirigir la salida al archivo de conteo
     with open(output_htseq, "w") as output:
@@ -523,6 +520,8 @@ HT_concat = HT_concat[genes_to_keep]
 
 #Sort HTseq-counts results to coincide with the metadata observations
 
+#tHIS IS JUST FOR THIS TYPE OF DATA BE CAREFUL WHEN WSING ANOTHER IDENTIFIERS
+
 def extract_last_two_digits(index):
     return int(index[-2:])
 index_tuples = [(index, extract_last_two_digits(index)) for index in HT_concat.index]
@@ -562,7 +561,7 @@ summary_DESeq2= stat_res.results_df
 
 #For visualization or post-processing purposes, it might be suitable
 #to perform LFC shrinkage. 
-lfc_shrink = stat_res.lfc_shrink(coeff="Condition_Treatment_vs_Control")
+lfc_shrink = stat_res.lfc_shrink(coeff="Condition_Late-exponential_vs_Early-exponential")
 
 #%% plots
 ## PCA
@@ -605,7 +604,7 @@ ax.axhline(y=y_thr, color='green', linestyle='--')
 ax.legend()
 
 # labels for the genes that have a FC > (1.5) and FC < -1.5
-FC_thr = 1.8
+FC_thr = 4
 summary_DESeq2_filtered = summary_DESeq2[(summary_DESeq2['log2FoldChange'] > FC_thr) | (summary_DESeq2['log2FoldChange'] < -FC_thr)]
 
 labels = summary_DESeq2_filtered.index.tolist()
