@@ -48,17 +48,34 @@ import gzip
 
 
 #Create file to download your data
-my_experiment = "PRUEBA_LUISA"
+"""my_experiment = "S-enterica_APERO"
 my_file = "/SraAccList_S-enterica_APERO.txt"
-reference_genome = "/media/usuario/CACM/Documentos/sRNAs_Sclav/raw_data/S-enterica_APERO/GCF_000210855.2_ASM21085v2_genomic.fna"
-reference_genome_gtf= "/media/usuario/CACM/Documentos/sRNAs_Sclav/raw_data/annotations_Streptococcus/GCF_000007465.2_ASM746v2_genomic.gtf"
+reference_genome_fna = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/S-enterica_annotations/GCF_000210855.2_ASM21085v2_genomic.fna"
+reference_genome_gtf= "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/S-enterica_annotations/GCF_000210855.2_ASM21085v2_genomic.gtf"
+reference_genome = "S-enterica-SL1344.1"
+"""
+"""
+my_experiment = "E-coli_APERO"
+my_file = "/SraAccList_E-coli_APERO.txt"
+reference_genome_fna = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/E-coli_annotations/GCF_000005845.2_ASM584v2_genomic.fna"
+reference_genome_gtf= "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/E-coli_annotations/GCF_000005845.2_ASM584v2_genomic.gtf"
+reference_genome = "E-coli-K12.2"
+"""
+
+my_experiment = "D-dadantii_APERO"
+my_file = "/SraAccList_D-dadantii_APERO.txt"
+reference_genome_fna = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/D-dadantii_annotations/GCF_000147055.1_ASM14705v1_genomic.fna"
+reference_genome_gtf= "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/D-dadantii_annotations/GCF_000147055.1_ASM14705v1_genomic.gtf"
+reference_genome = "D-dadantii-3937"
+
+
 
 cur_dir = os.getcwd()
-path = os.path.join(cur_dir, "raw_data", my_experiment) 
+path_rawdata = os.path.join(cur_dir, "raw_data", my_experiment) 
 
 
 try: 
-    os.mkdir(path) 
+    os.mkdir(path_rawdata) 
 except OSError as error: 
     print(error) 
 
@@ -71,22 +88,11 @@ Accessions  = lines[0:-1]
 # this will download the .sra files to ~/ncbi/public/sra/ (will create directory if not present)
 for sra_id in Accessions:
     print ("Currently downloading: " + sra_id)
-    fasterq = "fasterq-dump " + sra_id + " -O " + path
+    fasterq = "fasterq-dump " + sra_id + " -O " + path_rawdata
     print ("The command used was: " + fasterq)
     subprocess.call(fasterq, shell=True)
 	
-fastq_files = [file for file in os.listdir(path) if file.endswith(".fastq") ]
-
-fastq_files = [file for file in os.listdir(cur_dir) if file.endswith(".fastq") ]
-
-fastq_files_path = []
-for i in fastq_files:
-    fastq_files_path.append(os.path.join(cur_dir, i))
-    
-fastq_command =[]  
-for i in fastq_files:
-    fastq_command.append(os.path.join(cur_dir, i))
-fastq_command.insert(0, "fastqc")
+fastq_files = [file for file in os.listdir(path_rawdata) if file.endswith(".fastq") ]
 fastqc_outdir=os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastqc")
 
 try:
@@ -104,83 +110,71 @@ try:
 except OSError as error:
     print(error)  
    
-fastq_command.append("-o")
-fastq_command.append(fastqc_outdir)
-fastq_command.append("-t")
-fastq_command.append("20")
-#--noextract
-subprocess.call(fastq_command)
+#As Java version of PC is nos suitable for FASTQC I decided to create a conda 
+#environment to run fastqc
+def run_in_conda_env(conda_env_name, command_list):
+    command_str = ' '.join(command_list)
+    # Use conda run to execute the command in the specified environment
+    full_command = ["conda", "run", "-n", conda_env_name] + command_list
+    subprocess.run(full_command)
+
+for i in fastq_files:
+    fastQC_command = ["fastqc", os.path.join(path_rawdata, i), "-o", fastqc_outdir, "-t", "20"]
+    run_in_conda_env("FASTQC", fastQC_command)
+
 
 #Summarize all the fastqc results with multiQC
-try:
-    os.mkdir(os.path.join(cur_dir, "results_rna_seq", my_experiment, "multiqc"))
-except OSError as error:
-    print(error)
- 
-multiQC_command = ["multiqc", fastqc_outdir]
-multiQC_command.append("-n")
-multiQC_command.append(my_experiment)
-multiQC_command.append("-o")
-multiQC_command.append(os.path.join(cur_dir, "results_rna_seq", my_experiment, "multiqc"))
-multiQC_command.append("-f")
-multiQC_command.append("--profile-runtime") 
-subprocess.call(multiQC_command)
+def MultiQC(inputdir, outdir):
+    try:
+        os.mkdir(os.path.join(cur_dir, "results_rna_seq", my_experiment, outdir))
+    except OSError as error:
+        print(error)
+        
+    multiQC_command = ["multiqc", inputdir]
+    multiQC_command.append("-n")
+    multiQC_command.append(my_experiment)
+    multiQC_command.append("-o")
+    multiQC_command.append(os.path.join(cur_dir, "results_rna_seq", my_experiment,  outdir))
+    multiQC_command.append("-f")
+    multiQC_command.append("--profile-runtime") 
+    subprocess.call(multiQC_command)
+
+MultiQC(fastqc_outdir, "multiqc")
 
 
-
-
-
-#Filter the adpaters
-try:
-  os.mkdir(os.path.join(cur_dir, "results_rna_seq", my_experiment, "cutadapt"))
-except OSError as error:
-    print(error) 
-
-adapter_5prime = "GTTCAGAGTTCTACAGTCCGACGATC"
-adapter_3prime = "TGGAATTTCTCGGGTGCCAAGG"
-
-
-#Cutadapt command for adapter trimming at both ends, 
-#quality triming at both ends and filtering to only have reads with length >18nt
-
-
-for i,j  in enumerate(fastq_files):
-    cutadapt_command=["cutadapt", "-a", adapter_3prime, "-g",
-                  adapter_5prime, "-q", "15,10", "-m", "18", 
-                  "--cores=0", "-o",  
-                  os.path.join(cur_dir, "results_rna_seq", my_experiment, "cutadapt", "trimmed_"+j), fastq_files_path[i]]
-
-    subprocess.call(cutadapt_command)
-              
-                 
-                 
 #%% Quality control and filtering by fastp
+
+fastp_dir =os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp")
+
 try:
-  os.mkdir(os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp"))
+  os.mkdir(fastp_dir)
 except OSError as error:
     print(error)
 
 #if single-end
-
+"""
 for i,j  in enumerate(fastq_files):
     fastp_command=["fastp", 
-                   "-i", fastq_files_path[i], "-o",  
+                   "-i", path_rawdata +"/"+j, "-o",  
                    os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", "trimmed_"+j), 
                    "-j", j+".json", "-h", j+".html"]
 
     subprocess.call(fastp_command)
-
+"""
 #If paired-end
 
 for i,j  in enumerate(Accessions):
     fastp_command=["fastp", 
-                   "-i", path+"/"+j+"_1.fastq",
-                   "-I",  path+"/"+j+"_2.fastq",               
+                   "-i", path_rawdata+"/"+j+"_1.fastq",
+                   "-I",  path_rawdata+"/"+j+"_2.fastq",               
                    "-o", os.path.join(cur_dir, "results_rna_seq",
                                 my_experiment, "fastp", "trimmed_"+j+"_1.fastq"), 
                    "-O", os.path.join(cur_dir, "results_rna_seq",
                                 my_experiment, "fastp", "trimmed_"+j+"_2.fastq"),
-                   "-j", j+".json", "-h", j+".html"]
+                   "-j", j+".json", "-h", j+".html", "-w", "16", "--cut_right", 
+                   "--detect_adapter_for_pe"]
+
+
 
     subprocess.call(fastp_command)
 
@@ -209,82 +203,61 @@ if meet one window with mean quality < threshold, drop the bases in the
 window and the right part, and then stop. Use cut_right_window_size to set 
 the widnow size, and cut_right_mean_quality to set the mean quality threshold. 
 This is similar as the Trimmomatic SLIDINGWINDOW method
-https://github.com/Simon-Leonard/APERO/tree/master/R
+
+ "--trim_poly_g"
 """
 
-#%% Align sequences to the reference genome  BWA
+#%% Fastqc after trimming
 
+fastq_files_trimmed = [file for file in os.listdir(fastp_dir) if (file.endswith(".gz") or file.endswith(".fastq"))]
+fastQC_trimmed=os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastQC_trimmed")
 try:
-  os.mkdir(os.path.join(cur_dir, "results_rna_seq", my_experiment, "BWA"))
+    os.mkdir(fastQC_trimmed)
+except OSError as error:
+    print(error) 
+
+#As Java version of PC is nos suitable for FASTQC I decided to create a conda 
+#environment to run fastqc
+
+
+for i in fastq_files_trimmed:
+    fastQC_command_fastp = ["fastqc", os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", i), "-o", fastQC_trimmed, "-t", "20"]
+    run_in_conda_env("FASTQC", fastQC_command_fastp)
+
+
+#Summarize all the fastqc results with multiQC
+MultiQC(fastQC_trimmed, "multiqc_fastp")
+
+
+#%% Align sequences to the reference genome  Bowtie2
+
+# generate the index genome file
+# Comando Bowtie2 para crear la base de datos de referencia
+
+bowtie2_build_cmd = ["bowtie2-build", reference_genome_fna, reference_genome]
+subprocess.run(bowtie2_build_cmd, check=True)
+
+
+# Alignment for PE data 
+try:
+  os.mkdir(os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2"))
 except OSError as error:
     print(error)
 
-
 fastq_filtered_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp")
-fastq_filtered = [fastq for fastq in os.listdir(fastq_filtered_folder) if fastq.endswith(".fastq") ]  
-
-# generate the index genome file
-command = ['bwa', 'index', reference_genome]
-subprocess.run(command, check=True)
-
-
-#SE data
-for i in fastq_filtered:  
-    # Comamand for BWA
-    fastq_file = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", i)
-    command = ["bwa", "mem", reference_genome, fastq_file]
-    # redirect the output to the SAM file
-    output_sam = os.path.join(cur_dir, "results_rna_seq",
-                              my_experiment, "BWA", i)  +".sam"
-    
-    with open(output_sam, "w") as output_file:
-        subprocess.run(command, stdout=output_file, check=True)
-    
-
-
-#PE data
+fastq_filtered = fastq_files_trimmed 
 
 for i in Accessions:  
-    # Comamand for BWA
-    fastq_file_1 = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", "trimmed_"+i+"_1.fastq")
-    fastq_file_2 = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", "trimmed_"+i+"_2.fastq")
-    command = ["bwa", "mem", reference_genome, fastq_file_1, fastq_file_2]
-    # redirect the output to the SAM file
+    # Comamand for 
+    input_fastq_r1 = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", "trimmed_"+i+"_1.fastq")
+    input_fastq_r2 = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", "trimmed_"+i+"_2.fastq")
     output_sam = os.path.join(cur_dir, "results_rna_seq",
-                              my_experiment, "BWA", i)  +".sam"
-    
-    with open(output_sam, "w") as output_file:
-        subprocess.run(command, stdout=output_file, check=True)
+                              my_experiment, "Bowtie2", i)  +".sam"
+    bowtie2_align_cmd = ["bowtie2", "-p", "18", "-x", "S-enterica-SL1344", "-1", input_fastq_r1, 
+                         "-2", input_fastq_r2, "-S", output_sam]
+    subprocess.run(bowtie2_align_cmd, check=True)
 
-#%%  Convert unsorted SAM files to sorted
-def sort_sam_file(input_sam, output_sam):
-    entries = []
-    with pysam.AlignmentFile(input_sam, "r") as samfile:
-        for entry in samfile:
-            entries.append(entry)
-
-    sorted_entries = sorted(entries, key=lambda x: (x.reference_name, x.reference_start))
-    with pysam.AlignmentFile(output_sam, "w", header=samfile.header) as sorted_sam:
-        for entry in sorted_entries:
-            sorted_sam.write(entry)
-
-
-alignment_sam_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "BWA")
-alignment_sam = [sam for sam in os.listdir(alignment_sam_folder) if sam.endswith(".sam") ]  
-
-for alignment in alignment_sam: 
-    input_sam = os.path.join(alignment_sam_folder, alignment)
-    output_sam = os.path.join(alignment_sam_folder, "sorted" + alignment)
-    sort_sam_file(input_sam, output_sam)
-
-
-
-#%% Convert SAM files to BAM files as this is required by APERO
-
-
-alignment_sam_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "BWA")
-alignment_sam = [sam for sam in os.listdir(alignment_sam_folder) if sam.endswith(".sam") ]  
-
+#%% Convert SAM files to BAM files 
 
 def convert_sam_to_bam(sam_file, bam_file):
     # Open SAM file in reading mode
@@ -302,92 +275,72 @@ def convert_sam_to_bam(sam_file, bam_file):
     # Close the files
     sam.close()
     bam.close()
-
+    
+# Alignment for PE data WITHOUT rRNA removal 
+alignment_sam_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2")
+alignment_sam = [sam for sam in os.listdir(alignment_sam_folder) if sam.endswith(".sam") ]  
 for alignment in alignment_sam: 
     input_sam = os.path.join(alignment_sam_folder, alignment)
     output_bam = os.path.join(alignment_sam_folder, os.path.splitext(alignment)[0]+".bam")
     convert_sam_to_bam(input_sam, output_bam)
 
+
+
+
 #%% Convert unsorted to sorted BAM files
-alignment_bam = [bam for bam in os.listdir(alignment_sam_folder) if bam.endswith(".bam") ]  
 
-
-for bam in alignment_bam: 
-    input_bam = os.path.join(alignment_sam_folder, bam)    
-    # Archivo de salida CRAM
-    output_bam = os.path.join(alignment_sam_folder, "sorted_"+bam)
-    
-    # Command 1: samtools fixmate
-    fixmate_cmd = ["samtools", "fixmate", "-u", "-m", input_bam, "-"]
-    
-    # Command 2: samtools sort
-    sort_cmd = ["samtools", "sort", "-u", "-@2", "-T", os.path.join(alignment_sam_folder, "sort_tmp"), "-"]
-    
-    
-    # Comando 3: samtools markdup
-    markdup_cmd = ["samtools", "markdup", "-O", "bam,level=1", "-", output_bam]
-
-   
-    # Ejecutar los comandos en secuencia
-    try:
-        # Ejecutar comando 1
-        fixmate_process = subprocess.Popen(fixmate_cmd, stdout=subprocess.PIPE)
+def sorted_bam(alignment_sam_folder):    
+    alignment_bam = [bam for bam in os.listdir(alignment_sam_folder) if bam.endswith(".bam") ]  
+    for bam in alignment_bam: 
+        input_bam = os.path.join(alignment_sam_folder, bam)    
+        # Output file CRAM
+        output_bam = os.path.join(alignment_sam_folder, "sorted_"+bam)
         
-        # Ejecutar comando 2 y establecer la entrada del proceso anterior como la salida
-        sort_process = subprocess.Popen(sort_cmd, stdin=fixmate_process.stdout, stdout=subprocess.PIPE)
-        fixmate_process.stdout.close()
+        # Command 1: samtools fixmate
+        fixmate_cmd = ["samtools", "fixmate", "-m", input_bam, "-"]
         
-        # Ejecutar comando 3 y establecer la entrada del proceso anterior como la salida
-        markdup_process = subprocess.Popen(markdup_cmd, stdin=sort_process.stdout)
-        sort_process.stdout.close()
+        # Command 2: samtools sort
+        sort_cmd = ["samtools", "sort", "-@20", "-T", os.path.join(alignment_sam_folder, "sort_tmp"), "-"]
         
-        # Esperar a que se completen todos los procesos
-        fixmate_process.wait()
-        sort_process.wait()
-        markdup_process.wait()
+        
+        # Comando 3: samtools markdup
+        markdup_cmd = ["samtools", "markdup", "-O", "bam", "-@20", "-", output_bam]
     
-    except subprocess.CalledProcessError as e:
-        print("Error:", e)
-    
-
-#%% Align sequences to the reference genome  Bowtie2
-
-try:
-  os.mkdir(os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2"))
-except OSError as error:
-    print(error)
-
-
-fastq_filtered_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp")
-fastq_filtered = [fastq for fastq in os.listdir(fastq_filtered_folder) if fastq.endswith(".fastq") ]  
-
-# generate the index genome file
-
-# Comando Bowtie2 para crear la base de datos de referencia
-bowtie2_build_cmd = ["bowtie2-build", reference_genome, "genome"]
-subprocess.run(bowtie2_build_cmd, check=True)
-
-
-#SE data
-for i in fastq_filtered:  
-    fastq_file = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", i)
-    output_sam = os.path.join(cur_dir, "results_rna_seq",
-                              my_experiment, "Bowtie2", i)  +".sam"
-    bowtie2_align_cmd = ["bowtie2", "-x",  "genome", "-U", i,  "-S",  output_sam]
-    subprocess.run(bowtie2_align_cmd, check=True)
+       
+        # Ejecutar los comandos en secuencia
+        try:
+            # Ejecutar comando 1
+            fixmate_process = subprocess.Popen(fixmate_cmd, stdout=subprocess.PIPE)
+            
+            # Ejecutar comando 2 y establecer la entrada del proceso anterior como la salida
+            sort_process = subprocess.Popen(sort_cmd, stdin=fixmate_process.stdout, stdout=subprocess.PIPE)
+            fixmate_process.stdout.close()
+            
+            # Ejecutar comando 3 y establecer la entrada del proceso anterior como la salida
+            markdup_process = subprocess.Popen(markdup_cmd, stdin=sort_process.stdout)
+            sort_process.stdout.close()
+            
+            # Esperar a que se completen todos los procesos
+            fixmate_process.wait()
+            sort_process.wait()
+            markdup_process.wait()
+        
+        except subprocess.CalledProcessError as e:
+            print("Error:", e)
+sorted_bam(os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2"))
     
 
+#%%  Delete sam files
 
-#PE data
-for i in Accessions:  
-    # Comamand for 
-    input_fastq_r1 = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", "trimmed_"+i+"_1.fastq")
-    input_fastq_r2 = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", "trimmed_"+i+"_2.fastq")
-    output_sam = os.path.join(cur_dir, "results_rna_seq",
-                              my_experiment, "Bowtie2", i)  +".sam"
-    bowtie2_align_cmd = ["bowtie2", "-x", "genome", "-1", input_fastq_r1, 
-                         "-2", input_fastq_r2, "-S", output_sam]
-    subprocess.run(bowtie2_align_cmd, check=True)
+def delete_files_aln(folder, suffix):
+    files = os.listdir(folder)
+    for file in files:
+        if file.endswith(suffix):
+            path_file = os.path.join(folder, file)
+            os.remove(path_file)
+
+delete_files_aln(os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2"), ".sam")
+
 
 
 
@@ -396,7 +349,7 @@ for i in Accessions:
 
 #%% import rpy2.robjects as robjects
 
-
+"""
 # Cargar paquetes de R necesarios
 robjects.r('library(Rsamtools)')
 robjects.r('library(reshape2)')
@@ -417,7 +370,7 @@ robjects.r(f'res <- APERO_start_detection(work_dir = "{work_dir}", bam_name = "{
 
 # Ejecutar detección de fin 3'
 robjects.r(f'res2 <- APERO_end_detection(work_dir = "{work_dir}", start_table = res, mTEX_bam = "{bam_file}", readthrough_proportion = 0.01, Fmin=NA, thread_number = 8, genome_size = 4878012, ptt_file="{ptt_file}")')
-
+"""
 
 
 
