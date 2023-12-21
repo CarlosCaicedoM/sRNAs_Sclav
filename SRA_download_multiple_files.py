@@ -432,11 +432,9 @@ for bam in alignment_bam:
 def delete_files_aln(folder, suffix):
     files = os.listdir(folder)
     for file in files:
-        if file.endswith(suffix):
-            path_file = os.path.join(folder, file)
+        path_file = os.path.join(folder, file)
+        if file.endswith(suffix) or (file.endswith(".bam") and not file.startswith("sorted")):
             os.remove(path_file)
-
-
 
 delete_files_aln(alignment_sam_folder, ".sam")
 

@@ -57,7 +57,8 @@ import multiprocessing
 
 
 my_experiment = "S-clav_RNA-seq_sRNas_OMEGA"
-reference_genome = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/S-clavuligerus_ATCC27064_annotations/GCF_005519465.1_ASM551946v1_genomic.fna"
+reference_genome_fna = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/S-clavuligerus_ATCC27064_annotations/GCF_005519465.1_ASM551946v1_genomic.fna"
+reference_genome = "SCLAV"
 cur_dir = os.getcwd()
 #path_rawdata = os.path.join(cur_dir, "raw_data")
 path_rawdata = os.path.join(cur_dir, "raw_data", "RNA-seq_OMEGA")
@@ -276,7 +277,7 @@ MultiQC(fastQC_rRNA_removed, "multiqc_fastp_rRNA_removal")
 
 # generate the index genome file
 # Comando Bowtie2 para crear la base de datos de referencia
-bowtie2_build_cmd = ["bowtie2-build", reference_genome, "SCLAV"]
+bowtie2_build_cmd = ["bowtie2-build", reference_genome_fna, reference_genome]
 subprocess.run(bowtie2_build_cmd, check=True)
 
 
@@ -295,7 +296,7 @@ for i in experiments:
     input_fastq_r2 = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", "trimmed_"+i+"_R2.fastq.gz")
     output_sam = os.path.join(cur_dir, "results_rna_seq",
                               my_experiment, "Bowtie2_fastp", i)  +".sam"
-    bowtie2_align_cmd = ["bowtie2", "-p", "18", "-x", "SCLAV", "-1", input_fastq_r1, 
+    bowtie2_align_cmd = ["bowtie2", "-p", "18", "-x", reference_genome, "-1", input_fastq_r1, 
                          "-2", input_fastq_r2, "-S", output_sam]
     subprocess.run(bowtie2_align_cmd, check=True)
 
@@ -312,7 +313,7 @@ for i in experiments:
     input_fastq_r2 = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastq_rRNA_removed", i+"_2.fastq.gz")
     output_sam = os.path.join(cur_dir, "results_rna_seq",
                               my_experiment, "Bowtie2_rRNA_removed", i)  +".sam"
-    bowtie2_align_cmd = ["bowtie2", "-p", "18", "-x", "SCLAV", "-1", input_fastq_r1, 
+    bowtie2_align_cmd = ["bowtie2", "-p", "18", "-x", reference_genome, "-1", input_fastq_r1, 
                          "-2", input_fastq_r2, "-S", output_sam]
     subprocess.run(bowtie2_align_cmd, check=True)
 
@@ -355,6 +356,18 @@ for alignment in alignment_sam:
 
 #%% Convert unsorted to sorted BAM files
 
+def check_bam_order(file_path):
+    try:
+        with pysam.AlignmentFile(file_path, 'rb') as bamfile:
+            # Get the BAM file header
+            header = bamfile.header
+            # Check if the BAM file is sorted
+            is_sorted = 'HD' in header and 'SO' in header['HD']
+            return is_sorted
+    except Exception as e:
+        print(f"Error opening the BAM file: {e}")
+        return False
+    
 def sorted_bam(alignment_sam_folder):    
     alignment_bam = [bam for bam in os.listdir(alignment_sam_folder) if bam.endswith(".bam") ]  
     for bam in alignment_bam: 
@@ -444,12 +457,81 @@ for i in alignment_bam_sorted:
 
 #%%  Delete sam files
 
+
 def delete_files_aln(folder, suffix):
     files = os.listdir(folder)
     for file in files:
-        if file.endswith(suffix):
-            path_file = os.path.join(folder, file)
+        path_file = os.path.join(folder, file)
+        if file.endswith(suffix) or (file.endswith(".bam") and not file.startswith("sorted")):
             os.remove(path_file)
+
 
 delete_files_aln(os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2_fastp"), ".sam")
 delete_files_aln(os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2_rRNA_removed"), ".sam")
+
+#%% Align sequences to the reference genome with BWA
+
+try:
+  os.mkdir(os.path.join(cur_dir, "results_rna_seq", my_experiment, "BWA"))
+except OSError as error:
+    print(error)
+
+
+# generate the index genome file
+command = ['bwa', 'index', reference_genome_fna]
+subprocess.run(command, check=True)
+
+
+#SE data
+for i in fastq_filtered:  
+    # Comamand for BWA
+    fastq_file = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", i)
+    command = ["bwa", "mem", reference_genome_fna, fastq_file, "-t", "18" ]
+    # redirect the output to the SAM file
+    output_sam = os.path.join(cur_dir, "results_rna_seq",
+                              my_experiment, "BWA", i)  +".sam"
+    
+    with open(output_sam, "w") as output_file:
+        subprocess.run(command, stdout=output_file, check=True)
+    
+
+
+#PE data
+
+for i in experiments:  
+    # Comamand for BWA
+    fastq_file_1 = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", "trimmed_"+i+"_R1.fastq.gz")
+    fastq_file_2 = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", "trimmed_"+i+"_R2.fastq.gz")
+    command_BWA = ["bwa", "mem", "-t", "18", reference_genome_fna, fastq_file_1, fastq_file_2]
+    # redirect the output to the SAM file
+    output_sam = os.path.join(cur_dir, "results_rna_seq",
+                              my_experiment, "BWA", i)  +".sam"
+    
+    with open(output_sam, "w") as output_file:
+        subprocess.run(command_BWA, stdout=output_file, check=True)
+
+
+#Convert SAM files to BAM files 
+alignment_sam_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "BWA")
+alignment_sam = [sam for sam in os.listdir(alignment_sam_folder) if sam.endswith(".sam") ]  
+for alignment in alignment_sam: 
+    input_sam = os.path.join(alignment_sam_folder, alignment)
+    output_bam = os.path.join(alignment_sam_folder, os.path.splitext(alignment)[0]+".bam")
+    convert_sam_to_bam(input_sam, output_bam)
+
+
+
+
+#Convert unsorted to sorted BAM files
+
+for alignment in alignment_sam: 
+    input_sam = os.path.join(alignment_sam_folder, alignment)
+    is_sorted = check_bam_order(input_sam)
+
+if is_sorted:
+    print("The BAM file is already sorted.")
+else:
+    sorted_bam(os.path.join(cur_dir, "results_rna_seq", my_experiment, "BWA"))
+
+#Delete sam files and unsorted bam
+delete_files_aln(os.path.join(cur_dir, "results_rna_seq", my_experiment, "BWA"), ".sam")
