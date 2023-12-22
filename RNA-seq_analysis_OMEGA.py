@@ -58,6 +58,7 @@ import multiprocessing
 
 my_experiment = "S-clav_RNA-seq_sRNas_OMEGA"
 reference_genome_fna = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/S-clavuligerus_ATCC27064_annotations/GCF_005519465.1_ASM551946v1_genomic.fna"
+reference_genome_gtf = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/S-clavuligerus_ATCC27064_annotations/GCF_005519465.1_ASM551946v1_genomic.gtf"
 reference_genome = "SCLAV"
 cur_dir = os.getcwd()
 #path_rawdata = os.path.join(cur_dir, "raw_data")
@@ -535,3 +536,198 @@ else:
 
 #Delete sam files and unsorted bam
 delete_files_aln(os.path.join(cur_dir, "results_rna_seq", my_experiment, "BWA"), ".sam")
+
+
+#%% count features with htseq-count
+
+try:
+  os.mkdir(os.path.join(cur_dir, "results_rna_seq", my_experiment, "HTseq"))
+except OSError as error:
+    print(error)
+
+
+bam_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2_fastp")
+bam_files = [bam for bam in os.listdir(bam_folder) if (bam.endswith(".bam") &  bam.startswith("sorted"))]  
+
+
+for b in bam_files:  
+    # Definir los archivos de entrada y salida
+    bam_file =  os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2_fastp", b)
+    output_htseq = os.path.join(cur_dir, "results_rna_seq",
+                              my_experiment, "HTseq", b)  +".counts"
+
+    # Comando para HTSeq-count
+    command_htseq = ["htseq-count", "-f", "bam", "-t", 
+               "gene", "-i", "gene_id", "-n", "20", "-r", "pos", bam_file, reference_genome_gtf]
+
+    # Ejecutar el comando y redirigir la salida al archivo de conteo
+    with open(output_htseq, "w") as output:
+        subprocess.run(command_htseq, stdout=output, check=True)
+
+
+#--num-threads  -n <n>, --nprocesses=<n>
+#If the reads are PE you must specify 
+#"-r", "name"
+# "-s", "no" for non-stranded data
+
+#%% use deseq2 to determine if the genes are differentially expressed
+
+try:
+  os.mkdir(os.path.join(cur_dir, "results_rna_seq", my_experiment, "DESeq2"))
+except OSError as error:
+    print(error)
+DESeq2_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "DESeq2")
+
+
+#Convert the data from HTseq to the format required by DESeq2
+HTseq_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "HTseq")
+HTseq_files = [HTseq for HTseq in os.listdir(HTseq_folder) if HTseq.endswith(".counts") ]  
+
+
+dfs_HTseq = []
+for HT in HTseq_files:  
+    df = pd.read_table(os.path.join(HTseq_folder, HT), sep="\t", header=None)
+    df = df.rename(columns={0: 'Gene_ID'}) 
+    match1 = re.search(r"SC([^_]+)", HT)
+    if match1:
+        resultado = match1.group(0)
+    df = df.rename(columns={1: resultado})
+    df.set_index('Gene_ID', inplace=True)
+    dfs_HTseq.append(df)
+
+HT_concat = pd.concat(dfs_HTseq, axis = 1)
+
+rows_eliminate = df.index[-5:]  # Get the index of the last 5 rows
+HT_concat.drop(rows_eliminate, inplace=True)
+HT_concat = HT_concat.transpose()
+#Sort HTseq-counts results to coincide with the metadata observations
+
+desired_index = ['SC24H-1', 'SC24H-2', 'SC48H-1', 'SC48H-2', 'SC72H-1', 'SC72H-2', 'SC96H-1', 'SC96H-2']
+HT_concat= HT_concat.reindex(index=desired_index)
+
+#save the results
+HT_file = os.path.join(DESeq2_folder, "HTseq.txt")
+HT_concat.to_csv(HT_file, sep = "\t", index=True)
+
+#Open the metadata file
+metadata_file = DESeq2_folder+"/metadata.txt"
+metadata = pd.read_table(metadata_file, sep = "\t")
+metadata.set_index('Sample', inplace=True)
+
+
+#Filter out genes that have less than 5 read counts in total
+genes_to_keep = HT_concat.columns[HT_concat.sum(axis=0) >= 10]
+HT_concat = HT_concat[genes_to_keep]
+
+
+
+# DeseqDataSet fits dispersion and log-fold change (LFC) parameters from
+#the data, and stores them
+dds = DeseqDataSet(
+    counts=HT_concat,
+    clinical=metadata,
+    design_factors="Condition",
+    refit_cooks=True,
+    n_cpus=8,)
+
+#Once a DeseqDataSet was initialized, we may run the deseq2() method to 
+#fit dispersions and LFCs.
+dds.deseq2()
+
+#save the results
+with open(os.path.join(DESeq2_folder, "dds_detailed_pipe.pkl"), "wb") as f:
+        pkl.dump(dds, f)
+
+#Now that dispersions and LFCs were fitted, we may proceed with
+#statistical tests to compute p-values and adjusted p-values for 
+#differential expresion. 
+stat_res = DeseqStats(dds, n_cpus=8)
+
+#PyDESeq2 computes p-values using Wald tests. 
+#This can be done using the summary() method
+stat_res.summary()
+
+summary_DESeq2= stat_res.results_df
+
+#For visualization or post-processing purposes, it might be suitable
+#to perform LFC shrinkage. 
+lfc_shrink = stat_res.lfc_shrink(coeff="Condition_Late-exponential_vs_Early-exponential")
+
+
+#%% plots
+## PCA
+sc.tl.pca(dds)
+sc.pl.pca(dds, color = 'Condition', size = 200)
+
+#%% Volcano
+FDR = summary_DESeq2['pvalue'] #cambiar por padjus
+FDR = FDR.values
+log_FDR = np.log10(FDR)
+
+log2_FC = summary_DESeq2['log2FoldChange']
+log2_FC = log2_FC.values
+x_thr= 1
+y_thr = -np.log10(0.3)
+
+f, ax = plt.subplots()
+ax.scatter(log2_FC[(log2_FC < -x_thr) & (-log_FDR > y_thr)], 
+           -log_FDR[(log2_FC < -x_thr) & (-log_FDR > y_thr)], color='crimson', label='DE')
+
+ax.scatter(log2_FC[(log2_FC > x_thr) & (-log_FDR > y_thr)], 
+           -log_FDR[(log2_FC > x_thr) & (-log_FDR > y_thr)], color='dodgerblue', label='DE')
+
+ax.scatter(log2_FC[(log2_FC < -x_thr) & (-log_FDR < y_thr)], 
+           -log_FDR[(log2_FC < -x_thr) & (-log_FDR < y_thr)], color='darkgrey', label='not DE')
+
+ax.scatter(log2_FC[(log2_FC > x_thr) & (-log_FDR < y_thr)], 
+           -log_FDR[(log2_FC > x_thr) & (-log_FDR < y_thr)], color='darkgrey')
+
+ax.scatter(log2_FC[(log2_FC > -x_thr) & (log2_FC < x_thr)], 
+           -log_FDR[(log2_FC > -x_thr) & (log2_FC < x_thr)], 
+           color='darkgrey')
+
+ax.grid()
+ax.set_xlabel("$log_2$ Fold Change")
+ax.set_ylabel("$-log_{10}$ FDR")
+ax.axvline(x=x_thr, color='green', linestyle='--')
+ax.axvline(x=-x_thr, color='green', linestyle='--')
+ax.axhline(y=y_thr, color='green', linestyle='--')
+ax.legend()
+
+# labels for the genes that have a FC > (1.5) and FC < -1.5
+FC_thr = 4
+summary_DESeq2_filtered = summary_DESeq2[(summary_DESeq2['log2FoldChange'] > FC_thr) | (summary_DESeq2['log2FoldChange'] < -FC_thr)]
+
+labels = summary_DESeq2_filtered.index.tolist()
+x_coords = list(summary_DESeq2_filtered['log2FoldChange'])
+y_coords = list(summary_DESeq2_filtered['pvalue'])
+
+for label, x, y in zip(labels, x_coords, y_coords):
+    ax.annotate(label, (x, -np.log10(y)),textcoords="data", 
+                xytext=(x, -np.log10(y)), ha='left', fontsize = 8)
+
+
+#%% MA plot
+
+log2_FC[(log2_FC < -x_thr) & (-log_FDR > y_thr)]
+
+# Obtener los valores de basemean y log2 fold change
+DE_genes = summary_DESeq2[summary_DESeq2['pvalue'] < 0.05]
+non_DE = summary_DESeq2[summary_DESeq2['pvalue'] >= 0.05]
+
+basemean_DE = DE_genes.baseMean
+basemean_non_DE = non_DE.baseMean
+
+log2_FC_DE = DE_genes.log2FoldChange
+log2_FC_non_DE = non_DE.log2FoldChange
+
+
+# Crear la figura y el eje
+fig2, ax = plt.subplots()
+ax.scatter(basemean_DE, log2_FC_DE, color='red', label = "DE")
+ax.scatter(basemean_non_DE, log2_FC_non_DE, color='black', label = "non DE")
+ax.legend()
+ax.axhline(y=0, color='red', linestyle='--')
+ax.grid()
+ax.set_xlabel('mean of normalized counts')
+ax.set_ylabel('$log_2$ Fold Change')

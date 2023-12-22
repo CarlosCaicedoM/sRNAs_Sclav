@@ -337,7 +337,6 @@ else:
 
 #%%  Delete sam files and unsorted bam
 
-import os
 
 def delete_files_aln(folder, suffix):
     files = os.listdir(folder)
