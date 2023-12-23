@@ -56,13 +56,13 @@ import multiprocessing
 #%% Input data
 
 
-my_experiment = "S-clav_RNA-seq_sRNas_OMEGA"
+my_experiment = "S-clav_RNA-seq_sRNas_OMEGA_SE1"
 reference_genome_fna = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/S-clavuligerus_ATCC27064_annotations/GCF_005519465.1_ASM551946v1_genomic.fna"
 reference_genome_gtf = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/S-clavuligerus_ATCC27064_annotations/GCF_005519465.1_ASM551946v1_genomic.gtf"
 reference_genome = "SCLAV"
 cur_dir = os.getcwd()
 #path_rawdata = os.path.join(cur_dir, "raw_data")
-path_rawdata = os.path.join(cur_dir, "raw_data", "RNA-seq_OMEGA")
+path_rawdata = os.path.join(cur_dir, "raw_data", my_experiment)
 
 
 fastq_files = [file for file in os.listdir(path_rawdata) if file.endswith(".gz") ]
@@ -139,7 +139,8 @@ for i,j  in enumerate(fastq_files):
     fastp_command=["fastp", 
                    "-i", fastq_files_path[i], "-o",  
                    os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", "trimmed_"+j),
-                   "--cut_right", "-j", j+".json", "-h", j+".html", "-w", "16"]
+                   "-j", j+".json", "-h", j+".html", "-w", "16", 
+                   "--cut_right", "--trim_poly_g", "--trim_poly_x"]
 
     subprocess.call(fastp_command)
 
@@ -280,6 +281,22 @@ MultiQC(fastQC_rRNA_removed, "multiqc_fastp_rRNA_removal")
 # Comando Bowtie2 para crear la base de datos de referencia
 bowtie2_build_cmd = ["bowtie2-build", reference_genome_fna, reference_genome]
 subprocess.run(bowtie2_build_cmd, check=True)
+fastq_filtered_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp")
+fastq_filtered = [fastq for fastq in os.listdir(fastq_filtered_folder) if fastq.endswith(".gz") ]  
+
+
+#SE data
+try:
+  os.mkdir(os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2"))
+except OSError as error:
+    print(error)
+    
+for i in fastq_filtered:  
+    fastq_file = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", i)
+    output_sam = os.path.join(cur_dir, "results_rna_seq",
+                              my_experiment, "Bowtie2", i)  +".sam"
+    bowtie2_align_cmd = ["bowtie2", "-p", "18", "-x",  reference_genome, "-U", fastq_file,  "-S",  output_sam]
+    subprocess.run(bowtie2_align_cmd, check=True)
 
 
 # Alignment for PE data WITHOUT rRNA removal 
@@ -287,9 +304,6 @@ try:
   os.mkdir(os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2_fastp"))
 except OSError as error:
     print(error)
-
-fastq_filtered_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp")
-fastq_filtered = [fastq for fastq in os.listdir(fastq_filtered_folder) if fastq.endswith(".gz") ]  
 
 for i in experiments:  
     # Comamand for 
@@ -339,7 +353,7 @@ def convert_sam_to_bam(sam_file, bam_file):
     bam.close()
     
 # Alignment for PE data WITHOUT rRNA removal 
-alignment_sam_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2_fastp")
+alignment_sam_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2")
 alignment_sam = [sam for sam in os.listdir(alignment_sam_folder) if sam.endswith(".sam") ]  
 for alignment in alignment_sam: 
     input_sam = os.path.join(alignment_sam_folder, alignment)
@@ -407,7 +421,7 @@ def sorted_bam(alignment_sam_folder):
         
         except subprocess.CalledProcessError as e:
             print("Error:", e)
-sorted_bam(os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2_fastp"))
+sorted_bam(os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2"))
 sorted_bam(os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2_rRNA_removed"))
 
 #%% Check if the rRNA was succesfully removed by counting the number of 
@@ -467,7 +481,7 @@ def delete_files_aln(folder, suffix):
             os.remove(path_file)
 
 
-delete_files_aln(os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2_fastp"), ".sam")
+delete_files_aln(os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2"), ".sam")
 delete_files_aln(os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2_rRNA_removed"), ".sam")
 
 #%% Align sequences to the reference genome with BWA
@@ -482,6 +496,9 @@ except OSError as error:
 command = ['bwa', 'index', reference_genome_fna]
 subprocess.run(command, check=True)
 
+
+fastq_filtered_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp")
+fastq_filtered = [fastq for fastq in os.listdir(fastq_filtered_folder) if fastq.endswith(".gz") ]  
 
 #SE data
 for i in fastq_filtered:  
@@ -546,19 +563,23 @@ except OSError as error:
     print(error)
 
 
-bam_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2_fastp")
+bam_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2")
 bam_files = [bam for bam in os.listdir(bam_folder) if (bam.endswith(".bam") &  bam.startswith("sorted"))]  
 
 
 for b in bam_files:  
     # Definir los archivos de entrada y salida
-    bam_file =  os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2_fastp", b)
+    bam_file =  os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2", b)
     output_htseq = os.path.join(cur_dir, "results_rna_seq",
                               my_experiment, "HTseq", b)  +".counts"
 
     # Comando para HTSeq-count
+    #command_htseq = ["htseq-count", "-f", "bam", "-t", 
+     #          "gene", "-i", "gene_id", "-n", "20", "-r", "pos", bam_file, reference_genome_gtf]
+
+    #SE data
     command_htseq = ["htseq-count", "-f", "bam", "-t", 
-               "gene", "-i", "gene_id", "-n", "20", "-r", "pos", bam_file, reference_genome_gtf]
+                     "gene", "-i", "gene_id", "-n", "20", bam_file, reference_genome_gtf]
 
     # Ejecutar el comando y redirigir la salida al archivo de conteo
     with open(output_htseq, "w") as output:
