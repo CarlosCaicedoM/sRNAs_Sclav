@@ -48,12 +48,12 @@ import gzip
 
 
 #Create file to download your data
-"""my_experiment = "S-enterica_APERO"
+my_experiment = "S-enterica_APERO_SE1"
 my_file = "/SraAccList_S-enterica_APERO.txt"
 reference_genome_fna = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/S-enterica_annotations/GCF_000210855.2_ASM21085v2_genomic.fna"
 reference_genome_gtf= "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/S-enterica_annotations/GCF_000210855.2_ASM21085v2_genomic.gtf"
 reference_genome = "S-enterica-SL1344.1"
-"""
+
 """
 my_experiment = "E-coli_APERO"
 my_file = "/SraAccList_E-coli_APERO.txt"
@@ -61,13 +61,13 @@ reference_genome_fna = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data
 reference_genome_gtf= "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/E-coli_annotations/GCF_000005845.2_ASM584v2_genomic.gtf"
 reference_genome = "E-coli-K12.2"
 """
-
+"""
 my_experiment = "D-dadantii_APERO"
 my_file = "/SraAccList_D-dadantii_APERO.txt"
 reference_genome_fna = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/D-dadantii_annotations/GCF_000147055.1_ASM14705v1_genomic.fna"
 reference_genome_gtf= "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/D-dadantii_annotations/GCF_000147055.1_ASM14705v1_genomic.gtf"
 reference_genome = "D-dadantii-3937"
-
+"""
 
 
 cur_dir = os.getcwd()
@@ -152,15 +152,16 @@ except OSError as error:
     print(error)
 
 #if single-end
-"""
+
 for i,j  in enumerate(fastq_files):
     fastp_command=["fastp", 
                    "-i", path_rawdata +"/"+j, "-o",  
                    os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", "trimmed_"+j), 
-                   "-j", j+".json", "-h", j+".html"]
+                   "-j", j+".json", "-h", j+".html", 
+                   "--cut_right", "--trim_poly_g", "--trim_poly_x"]
 
     subprocess.call(fastp_command)
-"""
+
 #If paired-end
 
 for i,j  in enumerate(Accessions):
@@ -236,6 +237,23 @@ MultiQC(fastQC_trimmed, "multiqc_fastp")
 
 bowtie2_build_cmd = ["bowtie2-build", reference_genome_fna, reference_genome]
 subprocess.run(bowtie2_build_cmd, check=True)
+
+fastq_filtered_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp")
+fastq_filtered = [fastq for fastq in os.listdir(fastq_filtered_folder) if (fastq.endswith(".gz") or fastq.endswith(".fastq"))]  
+
+#SE data
+try:
+  os.mkdir(os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2"))
+except OSError as error:
+    print(error)
+    
+for i in fastq_filtered:  
+    fastq_file = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", i)
+    output_sam = os.path.join(cur_dir, "results_rna_seq",
+                              my_experiment, "Bowtie2", i)  +".sam"
+    bowtie2_align_cmd = ["bowtie2", "-p", "18", "--local", "-x",  reference_genome, "-U", fastq_file,  "-S",  output_sam]
+    subprocess.run(bowtie2_align_cmd, check=True)
+
 
 
 # Alignment for PE data 
