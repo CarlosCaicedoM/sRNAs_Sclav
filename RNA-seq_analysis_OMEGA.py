@@ -56,13 +56,20 @@ import multiprocessing
 #%% Input data
 
 
-my_experiment = "S-clav_RNA-seq_sRNas_OMEGA_SE1"
+my_experiment = "S-clav_RNA-seq_sRNas_OMEGA"
 reference_genome_fna = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/S-clavuligerus_ATCC27064_annotations/GCF_005519465.1_ASM551946v1_genomic.fna"
 reference_genome_gtf = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/S-clavuligerus_ATCC27064_annotations/GCF_005519465.1_ASM551946v1_genomic.gtf"
 reference_genome = "SCLAV"
+
+reference_chr_fasta = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/S-clavuligerus_ATCC27064_annotations/NZ_CP027858.1/NZ_CP027858.1.fasta"
+reference_plasmid_fasta = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/S-clavuligerus_ATCC27064_annotations/NZ_CP027859.1/NZ_CP027859.1.fasta"
+reference_chr = "SCLAV_CHR"
+reference_plasmid = "SCLAV_PLASMID"
+
+
 cur_dir = os.getcwd()
 #path_rawdata = os.path.join(cur_dir, "raw_data")
-path_rawdata = os.path.join(cur_dir, "raw_data", my_experiment)
+path_rawdata = os.path.join(cur_dir, "raw_data", "RNA-seq_OMEGA")
 
 
 fastq_files = [file for file in os.listdir(path_rawdata) if file.endswith(".gz") ]
@@ -73,6 +80,7 @@ for i in fastq_files:
 
 
 #%% Initial quality control of the data with fastqc
+my_experiment = "S-clav_RNA-seq_sRNas_OMEGA"
 
 try:
     os.mkdir("results_rna_seq")
@@ -295,13 +303,14 @@ for i in fastq_filtered:
     fastq_file = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", i)
     output_sam = os.path.join(cur_dir, "results_rna_seq",
                               my_experiment, "Bowtie2", i)  +".sam"
-    bowtie2_align_cmd = ["bowtie2", "-p", "18", "-x",  reference_genome, "-U", fastq_file,  "-S",  output_sam]
+    bowtie2_align_cmd = ["bowtie2", "--local", "-p", "18", "-x",  
+                         reference_genome, "-U", fastq_file,  "-S",  output_sam]
     subprocess.run(bowtie2_align_cmd, check=True)
 
 
 # Alignment for PE data WITHOUT rRNA removal 
 try:
-  os.mkdir(os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2_fastp"))
+  os.mkdir(os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2_fastp_local"))
 except OSError as error:
     print(error)
 
@@ -310,8 +319,8 @@ for i in experiments:
     input_fastq_r1 = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", "trimmed_"+i+"_R1.fastq.gz")
     input_fastq_r2 = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", "trimmed_"+i+"_R2.fastq.gz")
     output_sam = os.path.join(cur_dir, "results_rna_seq",
-                              my_experiment, "Bowtie2_fastp", i)  +".sam"
-    bowtie2_align_cmd = ["bowtie2", "-p", "18", "-x", reference_genome, "-1", input_fastq_r1, 
+                              my_experiment, "Bowtie2_fastp_local", i)  +".sam"
+    bowtie2_align_cmd = ["bowtie2", "--local", "-p", "18", "-x", reference_genome, "-1", input_fastq_r1, 
                          "-2", input_fastq_r2, "-S", output_sam]
     subprocess.run(bowtie2_align_cmd, check=True)
 
@@ -353,7 +362,7 @@ def convert_sam_to_bam(sam_file, bam_file):
     bam.close()
     
 # Alignment for PE data WITHOUT rRNA removal 
-alignment_sam_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2")
+alignment_sam_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2_fastp_local")
 alignment_sam = [sam for sam in os.listdir(alignment_sam_folder) if sam.endswith(".sam") ]  
 for alignment in alignment_sam: 
     input_sam = os.path.join(alignment_sam_folder, alignment)
@@ -421,7 +430,7 @@ def sorted_bam(alignment_sam_folder):
         
         except subprocess.CalledProcessError as e:
             print("Error:", e)
-sorted_bam(os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2"))
+sorted_bam(os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2_fastp_local"))
 sorted_bam(os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2_rRNA_removed"))
 
 #%% Check if the rRNA was succesfully removed by counting the number of 
@@ -443,10 +452,11 @@ command = f"grep 'gbkey \"rRNA\"' {reference_genome_bed} > {reference_genome_bed
 subprocess.run(command, shell=True)
 
 #access a BAM index file
-for i in alignment_bam_sorted:
-    bam_file = os.path.join(alignment_sam_folder, i)
-    command_index = ["samtools", "index", bam_file]    
-    subprocess.run(command_index)
+def bam_index_file(alignment_sam_folder, alignment_bam_sorted):
+    for i in alignment_bam_sorted:
+        bam_file = os.path.join(alignment_sam_folder, i)
+        command_index = ["samtools", "index", bam_file]    
+        subprocess.run(command_index)
 
 
 for i in alignment_bam_sorted:
@@ -481,7 +491,7 @@ def delete_files_aln(folder, suffix):
             os.remove(path_file)
 
 
-delete_files_aln(os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2"), ".sam")
+delete_files_aln(os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2_fastp_local"), ".sam")
 delete_files_aln(os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2_rRNA_removed"), ".sam")
 
 #%% Align sequences to the reference genome with BWA
@@ -553,6 +563,35 @@ else:
 
 #Delete sam files and unsorted bam
 delete_files_aln(os.path.join(cur_dir, "results_rna_seq", my_experiment, "BWA"), ".sam")
+
+#%% Align sequences to the reference genome  Bowtie 
+
+# generate the index genome file
+# Comando Bowtie para crear la base de datos de referencia
+bowtie_build_cmd = ["bowtie-build", reference_genome_fna, reference_genome]
+subprocess.run(bowtie_build_cmd, check=True)
+
+fastq_filtered_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp")
+fastq_filtered = [fastq for fastq in os.listdir(fastq_filtered_folder) if fastq.endswith(".gz") ]  
+
+
+# Alignment for PE data WITHOUT rRNA removal 
+try:
+  os.mkdir(os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie"))
+except OSError as error:
+    print(error)
+
+for i in experiments:  
+    # Comamand for 
+    input_fastq_r1 = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", "trimmed_"+i+"_R1.fastq.gz")
+    input_fastq_r2 = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", "trimmed_"+i+"_R2.fastq.gz")
+    output_sam = os.path.join(cur_dir, "results_rna_seq",
+                              my_experiment, "Bowtie", i)  +".sam"
+    bowtie_align_cmd = ["bowtie", "-t", "-p", "18", "-x", reference_genome, "-1", input_fastq_r1, 
+                         "-2", input_fastq_r2, "-S", output_sam]
+    subprocess.run(bowtie_align_cmd, check=True)
+
+
 
 
 #%% count features with htseq-count
@@ -752,3 +791,201 @@ ax.axhline(y=0, color='red', linestyle='--')
 ax.grid()
 ax.set_xlabel('mean of normalized counts')
 ax.set_ylabel('$log_2$ Fold Change')
+
+
+
+#%% Align sequences to the chromosome and plasmid individually with with  Bowtie2
+
+# generate the index genome file
+# Comando Bowtie2 para crear la base de datos de referencia
+
+#CHR
+bowtie2_build_cmd = ["bowtie2-build", reference_chr_fasta, reference_chr]
+subprocess.run(bowtie2_build_cmd, check=True)
+
+#PLASMID
+bowtie2_build_cmd = ["bowtie2-build", reference_plasmid_fasta, reference_plasmid]
+subprocess.run(bowtie2_build_cmd, check=True)
+
+
+fastq_filtered_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp")
+fastq_filtered = [fastq for fastq in os.listdir(fastq_filtered_folder) if (fastq.endswith(".gz") or fastq.endswith(".fastq")) ]  
+
+
+
+
+
+
+# Alignment for PE data CHR
+try:
+  os.mkdir(os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2_CHR"))
+except OSError as error:
+    print(error)
+
+for i in experiments:  
+    # Comamand for 
+    input_fastq_r1 = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", "trimmed_"+i+"_R1.fastq.gz")
+    input_fastq_r2 = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", "trimmed_"+i+"_R2.fastq.gz")
+    output_sam = os.path.join(cur_dir, "results_rna_seq",
+                              my_experiment, "Bowtie2_CHR", i)  +".sam"
+    bowtie2_align_cmd = ["bowtie2", "-p", "18", "-x", reference_chr, "-1", input_fastq_r1, 
+                         "-2", input_fastq_r2, "-S", output_sam]
+    subprocess.run(bowtie2_align_cmd, check=True)
+    
+    
+# Alignment for PE data PLASMID
+try:
+  os.mkdir(os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2_PLASMID"))
+except OSError as error:
+    print(error)
+
+for i in experiments:  
+    # Comamand for 
+    input_fastq_r1 = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", "trimmed_"+i+"_R1.fastq.gz")
+    input_fastq_r2 = os.path.join(cur_dir, "results_rna_seq", my_experiment, "fastp", "trimmed_"+i+"_R2.fastq.gz")
+    output_sam = os.path.join(cur_dir, "results_rna_seq",
+                              my_experiment, "Bowtie2_PLASMID", i)  +".sam"
+    bowtie2_align_cmd = ["bowtie2", "-p", "18", "-x", reference_plasmid, "-1", input_fastq_r1, 
+                         "-2", input_fastq_r2, "-S", output_sam]
+    subprocess.run(bowtie2_align_cmd, check=True)
+    
+#%% Convert SAM files to BAM files 
+  
+# Alignment for PE CHR
+alignment_sam_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2_CHR")
+alignment_sam = [sam for sam in os.listdir(alignment_sam_folder) if sam.endswith(".sam") ]  
+for alignment in alignment_sam: 
+    input_sam = os.path.join(alignment_sam_folder, alignment)
+    output_bam = os.path.join(alignment_sam_folder, os.path.splitext(alignment)[0]+".bam")
+    convert_sam_to_bam(input_sam, output_bam)
+
+  
+# Alignment for PE plasmid
+alignment_sam_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2_PLASMID")
+alignment_sam = [sam for sam in os.listdir(alignment_sam_folder) if sam.endswith(".sam") ]  
+for alignment in alignment_sam: 
+    input_sam = os.path.join(alignment_sam_folder, alignment)
+    output_bam = os.path.join(alignment_sam_folder, os.path.splitext(alignment)[0]+".bam")
+    convert_sam_to_bam(input_sam, output_bam)
+#%% Convert unsorted to sorted BAM files
+
+sorted_bam(os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2_CHR"))
+sorted_bam(os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2_PLASMID"))
+
+#%%  Delete sam files
+
+delete_files_aln(os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2_CHR"), ".sam")
+delete_files_aln(os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2_PLASMID"), ".sam")
+
+#%% generate .bai files
+
+
+#CHR
+alignment_sam_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2_CHR")
+alignment_bam_sorted = [bam for bam in os.listdir(alignment_sam_folder) if bam.startswith("sorted")]  
+bam_index_file(alignment_sam_folder, alignment_bam_sorted)
+
+
+#PLASMID
+alignment_sam_folder = os.path.join(cur_dir, "results_rna_seq", my_experiment, "Bowtie2_PLASMID")
+alignment_bam_sorted = [bam for bam in os.listdir(alignment_sam_folder) if bam.startswith("sorted")]  
+bam_index_file(alignment_sam_folder, alignment_bam_sorted)
+
+
+#%%
+
+from IPython import get_ipython
+get_ipython().magic('reset -sf')
+
+
+import subprocess
+import os
+import shutil
+import pandas as pd
+import re
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+apero_folder=  os.path.join(cur_dir, "results_rna_seq", my_experiment, "APERO")
+plasmid_files = [file for file in os.listdir(apero_folder) if (file.endswith(".csv") &  file.startswith("PLASMID"))]  
+chr_files = [file for file in os.listdir(apero_folder) if (file.endswith(".csv") &  file.startswith("CHR"))]  
+
+
+#Open results from replicate 1
+for i in plasmid_files
+    df1 = pd.read_table(os.path.join(apero_folder, i), sep=",")
+    #Filter for candidates that start with more than 10 reads
+    df1_coverage = df1[df1['freq'] >= 10]
+    #Discard internall small transcripts located inside CDSs
+    df1_internal = df1_coverage[df1_coverage['Class'] != 'Ai']
+
+
+
+
+
+# Assume you have a list of file names in a folder
+folder = 'your_folder_with_files'
+files = [file for file in os.listdir(folder) if file.endswith('.csv')]
+full_paths = [os.path.join(folder, file) for file in files]
+
+# Initialize the DataFrame result_final
+result_final = pd.DataFrame()
+
+# Iterate over each file and create a DataFrame for each one
+for file_path in full_paths:
+    df = pd.read_csv(file_path)
+
+    # Perform the comparison and information preservation procedure
+    for index, reference_row in df.iterrows():
+        reference_position = reference_row['Position']
+        lg_maximum = reference_row['lg']
+
+        matching_rows = []
+        for other_df in dataframes:
+            matching_rows.extend(other_df[
+                (other_df['Position'] >= (reference_position - 10)) &
+                (other_df['Position'] <= (reference_position + 10))
+            ])
+
+        if matching_rows:
+            df_maximum = max(matching_rows, key=lambda x: x['lg'])
+            result_final = pd.concat([result_final, df_maximum])
+
+# Reset the indices of the final DataFrame
+result_final.reset_index(drop=True, inplace=True)
+
+
+
+
+    #Open results from replicate 1
+    df2 = pd.read_table(os.path.join(apero_folder, "PLASMID_sorted_trimmedSC24H-2_S399_L001.csv"),
+                   sep=",")
+    #Filter for candidates that start with more than 10 reads
+    df2_coverage = df2[df2['freq'] >= 10]
+    #Discard internall small transcripts located inside CDSs
+    df2_internal = df2_coverage[df2_coverage['Class'] != 'Ai']
+    
+
+from BCBio import GFF
+from Bio import SeqIO
+
+#Extract fasta sequence of each replicon
+reference_genome_gbk = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/S-clavuligerus_ATCC27064_annotations/GCF_005519465.1_ASM551946v1_genomic.gbff"
+
+
+
+for seq_req in SeqIO.parse(reference_genome_gbk , "genbank"):
+    print(seq_req.id)
+    SeqIO.write(seq_req, "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/S-clavuligerus_ATCC27064_annotations/"+ seq_req.id + ".gbk", "genbank")
+    in_file = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/S-clavuligerus_ATCC27064_annotations/"+ seq_req.id+ ".gbk"
+    out_file = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/S-clavuligerus_ATCC27064_annotations/"+ seq_req.id+ ".gff3"
+    in_handle = open(in_file)
+    out_handle = open(out_file, "w")
+
+    GFF.write(SeqIO.parse(in_handle, "genbank"), out_handle)
+
+    in_handle.close()
+    out_handle.close()
+
+
