@@ -50,8 +50,8 @@ def get_intergenic_regions(handle, intergenic_length, max_intergenic_length, out
         gene_locations = []
         for feature in seq_record.features:
             if feature.type == 'gene':
-                my_start = feature.location.start.position
-                my_end = feature.location.end.position
+                my_start = feature.location.start
+                my_end = feature.location.end
                 my_strand = feature.strand
                 gene_ID = str(feature.qualifiers['locus_tag'][0])
                 gene_locations.append((my_start, my_end, my_strand, gene_ID))
@@ -138,7 +138,7 @@ def make_blast_db(output_dir = "results_sRNA/IGRs"):
 
 #Make blast database from IGRs sequence to compare
 def my_genome(my_reference, output_dir = "results_sRNA/IGRs"):
-    my_new_reference  = my_input_dir + my_reference
+    my_new_reference  = os.path.join(my_input_dir, my_reference)
     for seq_record in SeqIO.parse(my_new_reference, "genbank"):
         base_name=seq_record.dbxrefs[2]
         base_name_list=base_name.split(":")
@@ -153,7 +153,7 @@ def my_subjects(my_reference, output_dir = "results_sRNA/IGRs"):
     my_subjects = []
     my_results_reduced = [file for file in os.listdir(output_dir) if file.endswith(".fasta") ]   
     for i in my_results_reduced:
-        my_file = output_dir + "/" + i 
+        my_file = os.path.join(output_dir, i)
         if my_file != my_reference_IGRs:
             my_subjects.append(my_file)
     return my_subjects
@@ -343,7 +343,7 @@ def clustalw_aln():
         
 
 def my_assembly_name(my_reference):
-    my_new_reference  = my_input_dir + my_reference
+    my_new_reference  = os.path.join(my_input_dir, my_reference)
     for seq_record in SeqIO.parse(my_new_reference, "genbank"):
         base_name=seq_record.dbxrefs[2]
         base_name_list=base_name.split(":")
@@ -767,15 +767,15 @@ def processFile(filePath, outputPath):
     
 #%%  Workflow
 
-#Extract IGRs from the genomes to compare
+##Parameters for the main function
+#Define the folder with the genomes to analyze
+my_input_dir = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/Genbank_group1"
+my_reference = "GCF_005519465.1_ASM551946v1_genomic.gbk"
 
+#Extract IGRs from the genomes to compare
 #Define a folder to store temporary files and intermediate results
 
-
 my_current_dirs = [name for name in os.listdir(".") if os.path.isdir(name)]
-
-
-
 
 if "results_sRNA" in my_current_dirs:
     shutil.rmtree("results_sRNA")
@@ -783,40 +783,21 @@ if "results_sRNA" in my_current_dirs:
 else:
     os.mkdir("results_sRNA")
 
-"""
-for dir_path in my_current_dirs:
-    try:
-        shutil.rmtree(dir_path)
-    except OSError as e:
-        print("Error: %s : %s" % (dir_path, e.strerror))
-"""
-
-
 os.mkdir(os.path.join("results_sRNA", "IGRs_blast"))
 os.mkdir(os.path.join("results_sRNA", "IGRs_cluster"))
 os.mkdir(os.path.join("results_sRNA", "IGRs_alignments"))
 os.mkdir(os.path.join("results_sRNA", "reference_results"))  
 os.mkdir(os.path.join("results_sRNA", "IGRs"))
 
-
-#Define the folder with the genomes to analyze
-my_input_dir = "/media/usuario/lab_bioinformatica/Carlos_Caicedo-Montoya/sRNAs_Sclav/raw_data/Genbank_group1/"
-#my_input_dir = "raw_data/Genbank_group1/"
-#my_input_dir = "/media/usuario/lab_bioinformatica/Carlos_Caicedo-Montoya/sRNAs_Sclav/test_Actinoplanes/"
-
-
 #to get the data consider to use the following comand
-
 """
-conda install -c bioconda ncbi-genome-download
+pip install ncbi-genome-download
 ncbi-genome-download bacteria -F genbank -A Streptomyces_Assemby_Accession_Group1_Sclav.txt -v
 
 #To unzip multiple files
 chmod +x unzip_several.sh
 ./unzip_several.sh
-
 """
-
 
 #Extract IGRs for the genomes in my input directory
 my_files = os.listdir(my_input_dir)
@@ -839,16 +820,11 @@ for i in my_results:
 
 
 ## Create the databases
-
-#my_reference = "GCF_001553785.1_ASM155378v1_genomic.gbff"  
-my_reference = "GCF_005519465.1_ASM551946v1_genomic.gbk"
-
-#install blast + suite
 make_blast_db()
 
          
 ### Run reciprocal best blast 
-threads = 8
+threads = 18
 evalue = 1e-5
 rbbh(evalue, threads)
 
@@ -909,8 +885,6 @@ print("Converted %i records" % count)
 #  Find promoters with G4PromFinder
 os.mkdir(os.path.join("results_sRNA","G4PromFinder"))
 G4PromFinder(my_reference_fasta)
-
-
 
 
 #Call promoter results from G4PromFinder or promotech
@@ -992,7 +966,7 @@ os.mkdir(os.path.join("results_sRNA", "TransTermHP"))
 
 
 #convert genbank format to ptt
-file = os.path.join(my_input_dir + my_reference)
+file = os.path.join(my_input_dir, my_reference)
 outputPath = os.path.join("results_sRNA", "TransTermHP")
 processFile(file, outputPath)
 
@@ -1085,7 +1059,7 @@ cline_rfam = NcbiblastnCommandline(query=my_conserved_IGRs_RNAz,
                                   evalue=1e-6, 
                                   out = os.path.join("results_sRNA", "reference_results", "my_conserved_IGRs_RNAz_blastn_out.txt"), 
                                   task = 'blastn',
-                                  num_threads = 1,
+                                  num_threads = 10,
                                   max_hsps = 1,
                                   max_target_seqs=1,
                                   #dust = 'no',
@@ -1120,34 +1094,96 @@ test2 = pd.concat([test, rnaz_df], axis = 1)
 putative_sRNAs_rfam_blast = pd.concat([test2, rfam_results], axis = 1)
 
 
-#Anotar con RFAM
-
-
-url = 'ftp://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/Rfam.cm.gz'
+#Annotate with RFAM
+url = 'https://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/Rfam.cm.gz'
 filename = wget.download(url)
-url2="ftp://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/Rfam.clanin"
+url2="https://ftp.ebi.ac.uk/pub/databases/Rfam/CURRENT/Rfam.clanin"
 filename2  = wget.download(url2)
 
-
+#Decompress covariance models
 with gzip.open(filename, 'rb') as f_in:
     with open(' Rfam.cm', 'wb') as f_out:
         shutil.copyfileobj(f_in, f_out)
 
 
 os.mkdir("results_sRNA/Infernal")
-Inta_Results = os.path.join("results_sRNA/Infernal","Infernal_Sclav")
-cmd_cmpress = ["cmpress", 'Rfam.cm']
+Infernal_Results = os.path.join("results_sRNA/Infernal","Infernal_Sclav")
+cmd_cmpress = ["cmpress", 'Rfam_2024-03.cm']
 subprocess.call(cmd_cmpress)
 
-#corregir gunzip con python
+# Determine the total database size for the genome you are annotating.
+cmd_esl_seqstat = ["esl-seqstat", my_reference_fasta]
+subprocess.call(cmd_esl_seqstat)
 
-esl-seqstat infernal-1.1.2/mrum-genome.fa
+#Use the cmscan program to annotate RNAs represented in Rfam 
+#in the S. clavuligerus genome
 
-cmscan -Z 5.874406 --cut_ga --rfam --nohmmonly --tblout mrum-genome.tblout --fmt 2 --clanin Rfam.clanin Rfam.cm tutorial/mrum-genome.fa > mrum-genome.cmscan
+cmd_cmscan = ["cmscan", 
+               "-Z",  "17.088172", 
+               "--cut_ga", "--rfam", "--nohmmonly",
+               "--tblout", "Sclav-genome.tblout", "--cpu", "18",
+               "--fmt", "2", "--clanin", 
+               "Rfam_2024-03.clanin", "Rfam_2024-03.cm", 
+               my_reference_fasta]
+# Open the output file for writing
+with open("Sclav-genome.cmscan", "w") as output_file:
+    # Redirect stdout to the output file
+    subprocess.call(cmd_cmscan, stdout=output_file)
+
+#Move the alignments to the "Infernal" directory
+infernal_results = [infernal for infernal in os.listdir(os.getcwd()) if (infernal.endswith(".cmscan") or infernal.endswith(".tblout"))]  
+for file_name in infernal_results:
+    full_file_name = os.path.join(os.getcwd(), file_name)
+    shutil.move(full_file_name, "results_sRNA/Infernal")
+
+#Use the cmscan program to annotate RNAs represented in Rfam 
+#in the conserved IGRs
+cmd_esl_seqstat = ["esl-seqstat", IGRs_conserved_reference]
+subprocess.call(cmd_esl_seqstat)
+cmd_cmscan = ["cmscan", 
+               "-Z",  "0.775616", 
+               "--cut_ga", "--rfam", "--nohmmonly",
+               "--tblout", "Sclav-conserved_IGRs.tblout", "--cpu", "18",
+               "--fmt", "2", "--clanin", 
+               "Rfam_2024-03.clanin", "Rfam_2024-03.cm", 
+               IGRs_conserved_reference]
+# Open the output file for writing
+with open("Sclav-conserved_IGRs.cmscan", "w") as output_file:
+    # Redirect stdout to the output file
+    subprocess.call(cmd_cmscan, stdout=output_file)
+
+#Move the alignments to the "Infernal" directory
+infernal_results = [infernal for infernal in os.listdir(os.getcwd()) if (infernal.endswith(".cmscan") or infernal.endswith(".tblout"))]  
+for file_name in infernal_results:
+    full_file_name = os.path.join(os.getcwd(), file_name)
+    shutil.move(full_file_name, "results_sRNA/Infernal")
+
+#Use the cmscan program to annotate RNAs represented in Rfam 
+#in the conserved IGRs with RNAz high class probability
+cmd_esl_seqstat = ["esl-seqstat", my_conserved_IGRs_RNAz]
+subprocess.call(cmd_esl_seqstat)
+cmd_cmscan = ["cmscan", 
+               "-Z",  "0.027566", 
+               "--cut_ga", "--rfam", "--nohmmonly",
+               "--tblout", "Sclav-conserved_IGRs_RNAz.tblout", "--cpu", "18",
+               "--fmt", "2", "--clanin", 
+               "Rfam_2024-03.clanin", "Rfam_2024-03.cm", 
+               my_conserved_IGRs_RNAz]
+# Open the output file for writing
+with open("Sclav-conserved_IGRs_RNAz.cmscan", "w") as output_file:
+    # Redirect stdout to the output file
+    subprocess.call(cmd_cmscan, stdout=output_file)
+
+#Move the alignments to the "Infernal" directory
+infernal_results = [infernal for infernal in os.listdir(os.getcwd()) if (infernal.endswith(".cmscan") or infernal.endswith(".tblout"))]  
+for file_name in infernal_results:
+    full_file_name = os.path.join(os.getcwd(), file_name)
+    shutil.move(full_file_name, "results_sRNA/Infernal")
+
 
 
 #Definir orientacion correcta
-#Anotar conserved IGRs not just the ones with RNAz results
+#Comparar anotaciones de BLAST e Infernal
 #Promotech y trasntermHP para todos los IGRs
 
 
