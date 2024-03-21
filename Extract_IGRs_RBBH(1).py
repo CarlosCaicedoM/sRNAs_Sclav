@@ -769,8 +769,13 @@ def processFile(filePath, outputPath):
 
 ##Parameters for the main function
 #Define the folder with the genomes to analyze
-my_input_dir = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/Genbank_group1"
-my_reference = "GCF_005519465.1_ASM551946v1_genomic.gbk"
+
+#my_input_dir = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/Genbank_group1"
+my_input_dir = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/Genbank_clade2_pangenome"
+
+
+
+my_reference = "GCF_005519465.1_ASM551946v1_genomic.gbff"
 
 #Extract IGRs from the genomes to compare
 #Define a folder to store temporary files and intermediate results
@@ -954,6 +959,11 @@ for key, value in promoters_in_IGRs.items():
 
 #Save promoters in IGRs
 df2= pd.DataFrame.from_dict(promoters_in_IGRs, orient="index")
+new_names = {str(col): f'Promoter{int(col)+1}' for col in df2.columns}
+new_names_list = list(new_names.values())
+df2.columns = new_names_list
+
+
 df2.to_csv ('results_sRNA/reference_results/Promoters_in_conserved_IGRs.csv', index = True, header = False)
 
 
@@ -1005,6 +1015,11 @@ for key, value in IGRs_conserved_dict2.items():
 
 #Save terminators in IGRs
 df3= pd.DataFrame.from_dict(terminators_in_IGRs, orient="index")
+new_names = {str(col): f'Terminator{int(col)+1}' for col in df3.columns}
+new_names_list = list(new_names.values())
+df3.columns = new_names_list
+
+
 df3.to_csv ('results_sRNA/reference_results/Terminators_in_conserved_IGRs.csv', index = True, header = False)
 
 #Check the number of conserved IGRs with terminator 
@@ -1023,6 +1038,9 @@ with_terminator = len(terminators_in_IGRs) - len(without_terminator)
 
 #Run RNAz using the conserved IGR sequences
 subprocess.call('./run_RNAz_local.sh')
+subprocess.call('./run_RNAz_local_parallel.sh')
+
+
 rnaz_results = [rnaz for rnaz in os.listdir("results_sRNA/RNAz_out") if rnaz.endswith(".out") ]
 
 RNAz_all = os.path.join("results_sRNA/RNAz_out", "RNAz_all.out")
@@ -1087,6 +1105,8 @@ have_rnaz =  [True for _ in range(len(rnaz_ids))]
 
 rnaz_dict = dict(zip(rnaz_ids, have_rnaz))
 rnaz_df = pd.DataFrame.from_dict(rnaz_dict, orient="index")
+rnaz_df.columns = ["RNAz"]
+
 
 test2 = pd.concat([test, rnaz_df], axis = 1)
 
@@ -1158,6 +1178,7 @@ for file_name in infernal_results:
     full_file_name = os.path.join(os.getcwd(), file_name)
     shutil.move(full_file_name, "results_sRNA/Infernal")
 
+
 #Use the cmscan program to annotate RNAs represented in Rfam 
 #in the conserved IGRs with RNAz high class probability
 cmd_esl_seqstat = ["esl-seqstat", my_conserved_IGRs_RNAz]
@@ -1181,11 +1202,39 @@ for file_name in infernal_results:
     shutil.move(full_file_name, "results_sRNA/Infernal")
 
 
+infernal_annotations = pd.read_csv("results_sRNA/Infernal/Sclav-conserved_IGRs.tblout", comment='#', header=None)
+infernal_annotations = infernal_annotations[0].str.split(expand=True)
+infernal_annotations['description_of_target'] = infernal_annotations.apply(lambda row: ' '.join(str(val) for val in row[28:-1] if val is not None), axis=1)
+
+
+infernal_annotations_filtered = infernal_annotations.iloc[:, [-1, 2,3,9,10,11,16,17]]
+
+
+infernal_columns = ["target_name",  "accession", "query_name", "seq_from",
+                    "seq_to", "strand", "score", "E-value"]
+infernal_annotations_filtered.columns = infernal_columns
+
+
+infernal_annotations_filtered = infernal_annotations_filtered.set_index('query_name')
+
+putative_sRNAs_rfam_blast_infernal = pd.concat([putative_sRNAs_rfam_blast, 
+                                                infernal_annotations_filtered], axis = 1)
+
+
+
+putative_sRNAs_rfam_blast_infernal.to_csv ('results_sRNA/reference_results/putative_sRNAs_rfam_blast_infernal.csv', index = True, header = True)
+
+
+
 
 #Definir orientacion correcta
-#Comparar anotaciones de BLAST e Infernal
 #Promotech y trasntermHP para todos los IGRs
 
+#Correct rbbh() directory for the output 
+#Time of the program to run
+#Delete blast databases
+#Course bash
+#make the program executable
 
 #df2--Promotech
 #df3--Transtermhp
@@ -1231,18 +1280,6 @@ intarRNA_output_20.to_csv("IntaRNA_Sclav_RNAz_conserved_20", sep = "\t", header 
 intarRNA_output_10.to_csv("IntaRNA_Sclav_RNAz_conserved_10", sep = "\t", header = True)
 
 
-
-
-
- #Correct rbbh() directory for the output 
-
-#Time of the program to run
-
-#Delete blast databases
-
-#Course bash
-
-#make the program executable
 #%% General features of IGRS in S. clavuligerus
 
 #length distribution of conserved IGRS
