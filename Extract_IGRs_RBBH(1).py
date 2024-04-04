@@ -18,9 +18,8 @@ from IPython import get_ipython
 get_ipython().magic('reset -sf')
 #run_line_magic(magic_name, parameter_s).get_ipython().magic('reset -sf')
 
-
-import sys
-import Bio
+import time
+from random import randint
 from Bio import SeqIO, SeqFeature
 from Bio.SeqFeature import FeatureLocation
 from Bio.SeqRecord import SeqRecord
@@ -733,11 +732,6 @@ Multiple files can be given (or using *) for batch processing
 @version: 1.0
 """
 
-from Bio import SeqIO
-import os
-import sys
-from random import randint
-
 #createFile(pttOutputFilePath, pttHeader, description, length, pttRows)
 #filePath = pttOutputFilePath
 #headerTemplate=pttHeader
@@ -865,12 +859,14 @@ def processFile(filePath, outputPath):
     
 #%%  Workflow
 
+start_time = time.time()
+
 ##Parameters for the main function
 #Define the folder with the genomes to analyze
 
 #my_input_dir = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/Genbank_group1"
-#my_input_dir = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/Genbank_clade2_pangenome"
-my_input_dir = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/Genbank_clade2_pangenome_reduced"
+my_input_dir = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/Genbank_clade2_pangenome"
+#my_input_dir = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/Genbank_clade2_pangenome_reduced"
 
 
 
@@ -1240,27 +1236,46 @@ putative_sRNAs_rfam_blast_infernal = pd.concat([putative_sRNAs_rfam_blast,
 
 putative_sRNAs_rfam_blast_infernal.to_csv ('results_sRNA/reference_results/putative_sRNAs_rfam_blast_infernal.csv', index = True, header = True)
 
+#Define the coding potential of IGRs
+
+#For this use CPC2 available at https://cpc2.gao-lab.org/index.php
+
+#Call coding potential  results from CPC2
+coding_potential = pd.read_table("CPC2/conserved_IGRs_my_reference_cpc2.txt", sep="\t")
+coding_potential_reordered = coding_potential[['#ID', 'label', 'peptide_length', 'Fickett_score', 'pI', 'ORF_integrity', 'coding_probability']]
+
+coding_potential_reordered.set_index('#ID', inplace=True)
+
+
+putative_sRNAs_rfam_blast_infernal_CP = pd.concat([putative_sRNAs_rfam_blast_infernal, 
+                                                coding_potential_reordered], axis = 1)
+
+
+putative_sRNAs_rfam_blast_infernal_CP.to_csv ('results_sRNA/reference_results/putative_sRNAs_rfam_blast_infernal_CP.csv', index = True, header = True)
+
+#Promotech y trasntermHP for all IGRs
+my_assembly_name = my_assembly_name(my_reference)
+promoters_in_ALL_IGRs = promoters_in_IGRs("results_sRNA/IGRs/" + my_assembly_name +"_IGRs_reduced.fasta", 
+                                      promoters_promotech,
+                                      "Promoters_in_ALL_IGRs")
+
+terminator_in_ALL_IGRs = terminator_in_IGRs("results_sRNA/IGRs/" + my_assembly_name +"_IGRs_reduced.fasta",
+                                        terminators_transtermhp,                                         
+                                        "terminator_in_ALL_IGRs")
+
+
+end_time = time.time()
+elapsed_time = end_time - start_time
 
 
 
-#Definir orientacion correcta
-#Promotech y trasntermHP para todos los IGRs
-
-#Correct rbbh() directory for the output 
-#Time of the program to run
-#Delete blast databases
-#Course bash
-#make the program executable
-
-#df2--Promotech
-#df3--Transtermhp
-#1 +
-#0 -
 
 
 
-#%%Pending tasks
-##command line IntaRNA
+
+
+
+#%% command line IntaRNA
 """
 IntaRNA -t /media/usuario/lab_bioinformatica/Carlos_Caicedo-Montoya/sRNAs_Sclav/results_sRNA/reference_results/conserved_IGRs_my_reference_RNAz.dat.fasta -q /media/usuario/lab_bioinformatica/Carlos_Caicedo-Montoya/sRNAs_Sclav/raw_data/CDS_from_genomic_group1/GCF_005519465.1_ASM551946v1_cds_from_genomic.fasta --threads 6 --personality=IntaRNAsTar --out=IntaRNA_Sclav_RNAz_conserved IntaRNA -t /media/usuario/lab_bioinformatica/Carlos_Caicedo-Montoya/sRNAs_Sclav/results_sRNA/reference_results/conserved_IGRs_my_reference_RNAz.fasta -q /media/usuario/lab_bioinformatica/Carlos_Caicedo-Montoya/sRNAs_Sclav/raw_data/CDS_from_genomic_group1/GCF_005519465.1_ASM551946v1_cds_from_genomic.fasta --threads 6 --personality=IntaRNAsTar
 
@@ -1274,7 +1289,7 @@ q_inta = "raw_data/CDS_from_genomic_group1/GCF_005519465.1_ASM551946v1_cds_from_
 
 os.mkdir("results_sRNA/IntaRNA")
 Inta_Results = os.path.join("results_sRNA/IntaRNA","IntaRNA_Sclav_RNAz_conserved")
-cmd_inta = ["IntaRNA", '-t', t_inta, "-q", q_inta,  "--threads", "6", "--personality=IntaRNAsTar", "--out", Inta_Results]
+cmd_inta = ["IntaRNA", '-t', t_inta, "-m", q_inta, "-v", "test"]
 subprocess.call(cmd_inta, text=True)
 
 
@@ -1290,11 +1305,23 @@ intarRNA_output_10 = intarRNA_output[intarRNA_output['E'] <= -10]
 
 
 
-intarRNA_output_30.to_csv("IntaRNA_Sclav_RNAz_conserved_30", sep = "\t", header = True)
-intarRNA_output_25.to_csv("IntaRNA_Sclav_RNAz_conserved_25", sep = "\t", header = True)
-intarRNA_output_20.to_csv("IntaRNA_Sclav_RNAz_conserved_20", sep = "\t", header = True)
-intarRNA_output_10.to_csv("IntaRNA_Sclav_RNAz_conserved_10", sep = "\t", header = True)
+intarRNA_output_30.to_csv("results_sRNA/IntaRNA/IntaRNA_Sclav_RNAz_conserved_30", sep = "\t", header = True)
+intarRNA_output_25.to_csv("results_sRNA/IntaRNA/IntaRNA_Sclav_RNAz_conserved_25", sep = "\t", header = True)
+intarRNA_output_20.to_csv("results_sRNA/IntaRNA/IntaRNA_Sclav_RNAz_conserved_20", sep = "\t", header = True)
+intarRNA_output_10.to_csv("results_sRNA/IntaRNA/IntaRNA_Sclav_RNAz_conserved_10", sep = "\t", header = True)
 
+
+
+
+#Definir orientacion correcta4
+
+#Course bash
+#make the program executable
+
+#df2--Promotech
+#df3--Transtermhp
+#1 +
+#0 -
 
 #%% General features of IGRS in S. clavuligerus
 
