@@ -36,9 +36,11 @@ from Bio import AlignIO
 import shutil
 import matplotlib.pyplot as plt
 import numpy as np
+import collections
 import re
 import wget
 import gzip
+from Bio.SeqUtils import GC
 
 ### Define function to extract IGRs
 def get_intergenic_regions(handle, intergenic_length, max_intergenic_length, output_dir = "results_sRNA/IGRs"):   
@@ -1336,27 +1338,176 @@ intarRNA_output_10.to_csv("results_sRNA/IntaRNA/IntaRNA_Sclav_RNAz_conserved_10"
 #1 +
 #0 -
 
+
 #%% General features of IGRS in S. clavuligerus
 
-#length distribution of conserved IGRS
-lengths_conserved_IGRs=[]
-for i in SeqIO.parse(IGRs_conserved_reference, "fasta"):
-    lengths_conserved_IGRs.append(len(i))
 
 
-f, ax= plt.subplots(1, 2)
-ax[0].boxplot(np.asarray(lengths_conserved_IGRs))
-ax[0].grid()
-ax[0].set_ylabel("Length of IGR (bp)")
+my_input_dir = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/Genbank_group1"
+my_reference = "GCF_005519465.1_ASM551946v1_genomic.gbff"
 
-ax[1].hist(np.asarray(lengths_conserved_IGRs))
-ax[1].grid()
-ax[1].set_xlabel("Length of IGR (bp)")
-ax[1].set_ylabel("Number of IGRs")
-values = np.array([0,0.25,0.5,0.75,1])
-x = np.quantile(np.asarray(lengths_conserved_IGRs), values)
+#length distribution call get_intergenic_regions without limiting the length of the IGRS
+handle = os.path.join(my_input_dir, my_reference)
 
-#f.savefig ("reference_results/IGRs_boxplot.pdf", dpi=1200, format = "pdf")
+replicon_size = []
+for i in SeqIO.parse(handle, "genbank"):
+    replicon_size.append(len(i))
+replicon_size = np.asarray(replicon_size)
+genome_size = np.sum(replicon_size)
+
+
+get_intergenic_regions(handle, intergenic_length=1, 
+                       max_intergenic_length=10000000, 
+                       output_dir="results_sRNA_clade2_pangenome_gene/reference_results")
+my_reference_IGRS_fasta = os.path.join("results_sRNA_clade2_pangenome_gene", 
+                                       "reference_results", 
+                                      my_reference.split(".")[0] + "_IGRs.fasta")
+lengths_IGRs=[]
+for i in SeqIO.parse(my_reference_IGRS_fasta, "fasta"):
+    lengths_IGRs.append(len(i))
+lengths_IGRs=np.asarray(lengths_IGRs)
+lengths_IGRs_sorted = np.sort(lengths_IGRs)
+min_IGR = np.min(lengths_IGRs)
+max_IGR = np.max(lengths_IGRs)
+median_lengths_IGRs= np.median(lengths_IGRs)
+total_lengths_IGRs = np.sum(lengths_IGRs)
+
+get_intergenic_regions(handle, intergenic_length=130,
+                       max_intergenic_length=600,
+                       output_dir="results_sRNA_clade2_pangenome_gene/reference_results")
+my_reference_IGRS_fasta = os.path.join("results_sRNA_clade2_pangenome_gene", 
+                                       "reference_results", 
+                                       my_reference.split(".")[0] + "_IGRs.fasta")
+lengths_IGRs_reduced=[]
+for i in SeqIO.parse(my_reference_IGRS_fasta, "fasta"):
+    lengths_IGRs_reduced.append(len(i))
+
+lengths_IGRs_reduced=np.asarray(lengths_IGRs_reduced)
+lengths_IGRs_reduced_sorted = np.sort(lengths_IGRs_reduced)
+min_IGR_reduced = np.min(lengths_IGRs_reduced)
+max_IGR_reduced = np.max(lengths_IGRs_reduced)
+median_lengths_IGRs_reduced= np.median(lengths_IGRs_reduced)
+
+#Frequency of the type of IGRs 
+
+my_reference_IGRS_fasta = os.path.join("results_sRNA_clade2_pangenome_gene", 
+                                       "IGRs", 
+                                       my_reference.split(".")[0] + "_IGRs_reduced.fasta")
+
+flanking_genes = []
+for i in SeqIO.parse(my_reference_IGRS_fasta, "fasta"):
+    flanking_genes.append(i.id.split("++")[3])
+
+
+# using Counter to find frequency of elements
+frequency = collections.Counter(flanking_genes)
+
+# Convert frequency to a dictionary an then to a dataframe
+frequency = dict(frequency)
+df = pd.DataFrame.from_dict(frequency, orient='index')
+df.rename(columns={0: "flanking_genes"}, inplace=True)
+labels = list(df.index)
+
+#determine GC content of intergenic regions
+
+GCs = []
+file = "results_sRNA_clade2_pangenome_gene/IGRs/GCF_005519465_IGRs_reduced.fasta"
+for seq_record in SeqIO.parse(file, "fasta"):
+    seq_record.seq
+    GC_perc =  GC(seq_record.seq)
+    GCs.append(GC_perc)
+
+GCs = np.asarray(GCs)
+GCs_sorted = np.sort(GCs)
+min_GCs = np.min(GCs)
+max_GCs = np.max(GCs)
+median_GCs= np.median(GCs)
+
+GC_mean = np.mean(GCs)
+
+
+f, ((ax1, ax2), (ax3, ax4))= plt.subplots(2, 2)
+#plt.f(figsize=(8, 6))
+ax1.hist(np.asarray(lengths_IGRs), color = "darkcyan")
+ax1.grid()
+ax1.set_xlabel("Length of IGR (bp)")
+ax1.set_ylabel('Number of IGRs', size = 12)
+values1 = np.array([0,0.25,0.5,0.75,1])
+x1 = np.quantile(np.asarray(lengths_IGRs), values1)
+
+ax2.hist(np.asarray(lengths_IGRs_reduced), color  ="Deepskyblue")
+ax2.grid()
+ax2.set_xlabel("Length of IGR (bp)")
+values2 = np.array([0,0.25,0.5,0.75,1])
+x2 = np.quantile(np.asarray(lengths_IGRs_reduced), values2)
+
+#Plot the frequencies as barplots
+values3 = df.iloc[:, 0]
+values3 = np.asarray(values3)
+x3 = np.arange(len(labels))  # the label locations
+ax3.bar(x3, values3, tick_label = labels, color = "steelblue")
+ax3.set_ylabel('Number of IGRs', size = 12)
+ax3.grid()
+
+ax4.hist(np.asarray(GCs), color = "mediumslateblue")
+ax4.grid()
+ax4.set_xlabel("% GC")
+values4 = np.array([0,0.25,0.5,0.75,1])
+x4 = np.quantile(np.asarray(lengths_IGRs), values1)
+
+
+f.savefig ("results_sRNA_clade2_pangenome_gene/reference_results/F1_IGRs_lenght_dist_types.pdf",
+           dpi=300, format = "pdf")
+
+#%% count sequences in cluster of conserved IGRs fasta file
+
+# Path to the folder where the fasta files are located
+folder_path = "results_sRNA_clade2_pangenome_gene/IGRs_cluster"
+
+sequences_count_per_file = [(file, sum(1 for _ in SeqIO.parse(os.path.join(folder_path, file), 'fasta')))
+                            for file in os.listdir(folder_path) if file.endswith('.fasta')]
+
+
+# Print the number of sequences per file
+sequences_per_cluster=[]
+indentifiers_per_cluster = []
+for file, num_sequences in sequences_count_per_file:
+    sequences_per_cluster.append(num_sequences)
+    indentifiers_per_cluster.append(file)
+
+
+sequences_per_cluster = np.asarray(sequences_per_cluster)
+f, ax1= plt.subplots()
+ax1.hist(np.asarray(sequences_per_cluster), color = "indigo")
+ax1.grid()
+ax1.set_xlabel("Number of sequences", size = 12)
+ax1.set_ylabel('Frequency', size = 12)
+values1 = np.array([0,0.25,0.5,0.75,1])
+x1 = np.quantile(np.asarray(lengths_IGRs), values1)
+
+unique_values, frequencies = np.unique(sequences_per_cluster, return_counts=True)
+
+frequencies_conserved_IGRs = dict(zip(unique_values, frequencies))
+
+
+putative_sRNAs_rfam_blast_infernal_CP = pd.read_table("results_sRNA_clade2_pangenome_gene/reference_results/putative_sRNAs_rfam_blast_infernal_CP.csv", 
+                                                      sep=",", index_col=0 )
+
+
+
+sequences_count_per_file_df = pd.DataFrame(sequences_count_per_file, columns=['index', 'number_of_genomes'])
+
+# Establecer la columna 'index' como el índice
+sequences_count_per_file_df.set_index('index', inplace=True)
+sequences_count_per_file_df.index = sequences_count_per_file_df.index.str.replace('.fasta', '')
+
+
+
+
+putative_sRNAs_rfam_blast_infernal_CP_NOG = putative_sRNAs_rfam_blast_infernal_CP.join(sequences_count_per_file_df) 
+                                                       
+indices_iguales = (putative_sRNAs_rfam_blast_infernal_CP.index == sequences_count_per_file_df.index).all()
+
 
 #length distribution of alignments of conserved IGRS
 
@@ -1380,38 +1531,6 @@ ax[1].set_ylabel("Number of MSA")
 values = np.array([0,0.25,0.5,0.75,1])
 x = np.quantile(np.asarray(lengths_msa_conserved_IGRs), values)
 
-
-
-#Frequency of the type of IGRs 
-
-my_reference_IGRS_fasta = os.path.join("IGRs", my_reference.split(".")[0] + "_IGRs_reduced.fasta")
-
-flanking_genes = []
-for i in SeqIO.parse(my_reference_IGRS_fasta, "fasta"):
-    flanking_genes.append(i.id.split("++")[3])
-
-
-# importing the module
-import collections
-import numpy as np
-
-# using Counter to find frequency of elements
-frequency = collections.Counter(flanking_genes)
-
-# Convert frequency to a dictionary an then to a dataframe
-frequency = dict(frequency)
-df = pd.DataFrame.from_dict(frequency, orient='index')
-df.rename(columns={0: "flanking_genes"}, inplace=True)
-labels = list(df.index)
-
-#Plot the frequencies as barplots
-values = df.iloc[:, 0]
-values = np.asarray(values)
-x = np.arange(len(labels))  # the label locations
-import matplotlib.pyplot as plt
-f, ax= plt.subplots()
-ax.bar(x, values, tick_label = labels, color = "brown")
-ax.set_ylabel('Number of IGRs', size = 12)
 
 
 
@@ -1440,55 +1559,6 @@ f, ax= plt.subplots()
 ax.bar(x, values, tick_label = labels, color = "gold")
 ax.set_ylabel('Number of IGRs', size = 12)
 
-
-
-
-
-#length distribution call get_intergenic_regions without limiting the length of the IGRS
-my_input_dir = "/media/usuario/lab_bioinformatica/Carlos_Caicedo-Montoya/Genome-wide_identification_sRNAS_SClavuligerus/raw_data/Genbank_group1/"
-my_reference = "GCF_005519465.1_ASM551946v1_genomic.gbff"
-
-handle = my_input_dir + my_reference
-get_intergenic_regions(handle, intergenic_length=1, max_intergenic_length=10000000, output_dir="reference_results")
-my_reference_IGRS_fasta = os.path.join("reference_results", my_reference.split(".")[0] + "_IGRs.fasta")
-
-lengths=[]
-for i in SeqIO.parse(my_reference_IGRS_fasta, "fasta"):
-    lengths.append(len(i))
-
-
-f, ax= plt.subplots(1, 2)
-ax[0].boxplot(np.asarray(lengths))
-ax[0].grid()
-ax[0].set_ylabel("Length of IGR (bp)")
-
-ax[1].hist(np.asarray(lengths))
-ax[1].grid()
-ax[1].set_xlabel("Length of IGR (bp)")
-ax[1].set_ylabel("Number of IGRs")
-
-values = np.array([0,0.25,0.5,0.75,1])
-
-x = np.quantile(np.asarray(lengths), values)
-
-f.savefig ("reference_results/IGRs_boxplot.pdf", dpi=1200, format = "pdf")
-
-
-#%% determine GC content of intergenic regions
-from Bio.SeqUtils import GC 
-from Bio.Seq import Seq
-
-GCs = []
-file = "/home/usuario/Documentos/sRNAS_Sclav/results_sRNA/IGRs/GCF_005519465_IGRs_reduced.fasta"
-for seq_record in SeqIO.parse(file, "fasta"):
-    seq_record.seq
-    GC_perc =  GC(seq_record.seq)
-    GCs.append(GC_perc)
-
-import numpy as np
-GCs = np.asarray(GCs)
-
-GC_mean = np.mean(GCs)
 
 
 
