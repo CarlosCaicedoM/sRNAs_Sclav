@@ -1483,7 +1483,7 @@ ax1.grid()
 ax1.set_xlabel("Number of sequences", size = 12)
 ax1.set_ylabel('Frequency', size = 12)
 values1 = np.array([0,0.25,0.5,0.75,1])
-x1 = np.quantile(np.asarray(lengths_IGRs), values1)
+x1 = np.quantile(np.asarray(sequences_per_cluster), values1)
 
 unique_values, frequencies = np.unique(sequences_per_cluster, return_counts=True)
 
@@ -1506,9 +1506,91 @@ sequences_count_per_file_df.index = sequences_count_per_file_df.index.str.replac
 
 putative_sRNAs_rfam_blast_infernal_CP_NOG = putative_sRNAs_rfam_blast_infernal_CP.join(sequences_count_per_file_df) 
                                                        
-indices_iguales = (putative_sRNAs_rfam_blast_infernal_CP.index == sequences_count_per_file_df.index).all()
+#Number of conserved IGRs with secondary structure conservation
+RNAz_count = putative_sRNAs_rfam_blast_infernal_CP_NOG['RNAz'].sum()
+
+#Number of conserved IGRs with a promoter
+Promoter_count = putative_sRNAs_rfam_blast_infernal_CP_NOG['Promoter1'].count()
+Promoter_count2 = putative_sRNAs_rfam_blast_infernal_CP_NOG['Promoter2'].count()
+
+#Number of conserved IGRs with a promoter
+Terminator_count = putative_sRNAs_rfam_blast_infernal_CP_NOG['Terminator1'].count()
+
+#Number of conserved IGRs annotation in RFAM
+annotation_count = putative_sRNAs_rfam_blast_infernal_CP_NOG['target_name'].count()
+
+#number of conserved IGRs with coding potential
+
+index_coding = putative_sRNAs_rfam_blast_infernal_CP_NOG.loc[putative_sRNAs_rfam_blast_infernal_CP_NOG['label'] == 'coding'].index[0]
 
 
+#Analyze in detail the IGRs
+
+putative_sRNAs_summary = putative_sRNAs_rfam_blast_infernal_CP_NOG[[ 'Promoter1', 'Terminator1', 'RNAz','subject', 'target_name','number_of_genomes', 'label']].copy()
+
+
+index_rnaz = putative_sRNAs_summary.loc[putative_sRNAs_summary['RNAz'] == True].index
+list_index_RNAz = index_rnaz.tolist()
+
+
+index_promoter = putative_sRNAs_summary['Promoter1'].dropna().index
+list_index_promoter = index_promoter.tolist()
+
+
+index_terminator = putative_sRNAs_summary['Terminator1'].dropna().index
+list_index_terminator = index_terminator.tolist()
+
+
+has_infernal = putative_sRNAs_summary['target_name'].dropna().index
+list_has_infernal = has_infernal.tolist()
+
+#consider if previous annotations of sRNAS were detected in your analysis
+
+file_gff_all = os.path.join(os.getcwd(), "raw_data", 
+                            "S-clavuligerus_ATCC27064_annotations", 
+                            "GCF_005519465.1_ASM551946v1_genomic.gff")
+
+
+gff_all = pd.read_csv(file_gff_all, comment='#', 
+                            sep = "\t", header=None)
+
+gff_columns = ["seqname", "source", "feature", "start", "end", "score", 
+                   "strand", "frame", "attribute" ]
+gff_all.columns = gff_columns
+gff_all_cmsearch = gff_all[gff_all['source'] == 'cmsearch']
+del gff_all
+
+#Read Infernal annotations for all the genome
+infernal_annotations = pd.read_csv("results_sRNA_clade2_pangenome_gene/Infernal/Sclav-genome.tblout", comment='#', header=None, delimiter='\t')
+infernal_annotations = infernal_annotations[0].str.split(expand=True)
+infernal_annotations['description_of_target'] = infernal_annotations.apply(lambda row: ' '.join(str(val) for val in row[28:-1] if val is not None), axis=1)
+infernal_annotations_filtered = infernal_annotations.iloc[:, [-1, 2,3,9,10,11,16,17]]
+infernal_columns = ["target_name",  "accession", "query_name", "seq_from",
+                    "seq_to", "strand", "score", "E-value"]
+infernal_annotations_filtered.columns = infernal_columns
+
+infernal_annotations_filtered = infernal_annotations_filtered.drop_duplicates(subset=['seq_from'])
+infernal_annotations_filtered = infernal_annotations_filtered.set_index('target_name')
+
+infernal_annotations_filtered_sRNa = infernal_annotations_filtered.copy() 
+infernal_annotations_filtered_sRNa = infernal_annotations_filtered_sRNa.drop('Bacterial large subunit ribosomal RNA')
+infernal_annotations_filtered_sRNa = infernal_annotations_filtered_sRNa.drop('Archaeal large subunit ribosomal RNA')
+infernal_annotations_filtered_sRNa = infernal_annotations_filtered_sRNa.drop('Bacterial small subunit ribosomal RNA')
+infernal_annotations_filtered_sRNa = infernal_annotations_filtered_sRNa.drop('Eukaryotic large subunit ribosomal RNA')
+infernal_annotations_filtered_sRNa = infernal_annotations_filtered_sRNa.drop('Archaeal small subunit ribosomal RNA')
+infernal_annotations_filtered_sRNa = infernal_annotations_filtered_sRNa.drop('5S ribosomal RNA')
+infernal_annotations_filtered_sRNa = infernal_annotations_filtered_sRNa.drop('tRNA')
+infernal_annotations_filtered_sRNa = infernal_annotations_filtered_sRNa.drop('transfer-messenger RNA')
+infernal_annotations_filtered_sRNa = infernal_annotations_filtered_sRNa.drop('Bacterial small signal recognition particle')
+infernal_annotations_filtered_sRNa = infernal_annotations_filtered_sRNa.drop('Bacterial RNase P class A')
+infernal_annotations_filtered_sRNa = infernal_annotations_filtered_sRNa.drop('Group II catalytic intron')
+
+
+
+
+
+
+Archaeal large subunit ribosomal RNA
 #length distribution of alignments of conserved IGRS
 
 
