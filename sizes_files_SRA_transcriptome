@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Sat May 11 10:36:44 2024
+
+@author: usuario
+"""
+
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.stats import linregress
+import os
+
+
+# Puntos dados
+x = np.array([66, 341, 969, 1600])
+y = np.array([0.512, 2.7, 5.8, 9.7])
+
+# Ajuste de la recta
+coefficients = np.polyfit(x, y, 1)
+slope, intercept = coefficients
+
+# Ecuación de la recta ajustada
+equation = f'y = {slope:.2f}x + {intercept:.2f}'
+
+# Generar puntos para la recta ajustada
+x_fit = np.linspace(min(x), max(x), 100)
+y_fit = slope * x_fit + intercept
+
+# Calcular R^2
+slope, intercept, r_value, p_value, std_err = linregress(x, y)
+r_squared = r_value ** 2
+
+# Graficar puntos y la recta ajustada
+plt.scatter(x, y, label='Puntos dados')
+plt.plot(x_fit, y_fit, color='red', label='Recta ajustada')
+plt.xlabel('X')
+plt.ylabel('Y')
+plt.title('Ajuste de una recta')
+plt.legend()
+plt.grid(True)
+plt.text(3, 5, equation, fontsize=12, bbox=dict(facecolor='white', alpha=0.5))
+plt.text(3, 4, f'R^2 = {r_squared:.2f}', fontsize=12, bbox=dict(facecolor='white', alpha=0.5))
+plt.show()
+
+print("Ecuación de la recta ajustada:", equation)
+print("Coeficiente de determinación R^2:", r_squared)
+
+
+# Ruta de la carpeta
+carpeta = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/S-clavuligerus_RNA-Seq-data_SRA"  # Reemplaza '/ruta/a/la/carpeta' con la ruta real de tu carpeta
+
+# Lista para almacenar los tamaños de los archivos en MB
+tamanos_archivos_mb = []
+
+# Recorre los archivos en la carpeta
+for nombre_archivo in os.listdir(carpeta):
+    ruta_archivo = os.path.join(carpeta, nombre_archivo)
+    if os.path.isfile(ruta_archivo):
+        # Obtiene el tamaño del archivo en bytes
+        tamano_bytes = os.path.getsize(ruta_archivo)
+        # Convierte el tamaño a MB y lo agrega a la lista
+        tamano_mb = tamano_bytes / (1024 * 1024)  # 1 MB = 1024 * 1024 bytes
+        tamanos_archivos_mb.append(tamano_mb)
+
+# Imprime la lista de tamaños de archivos en MB
+print("Tamaños de archivos en MB:", tamanos_archivos_mb)
+
+TA_MB = np.asarray(tamanos_archivos_mb)
+TA_GB = slope*TA_MB+intercept
+suma_total = sum(TA_GB)
+
