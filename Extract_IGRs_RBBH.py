@@ -40,7 +40,8 @@ import collections
 import re
 import wget
 import gzip
-from Bio.SeqUtils import GC
+from Bio.SeqUtils import gc_fraction
+#from Bio.SeqUtils import GC
 
 ### Define function to extract IGRs
 def get_intergenic_regions(handle, intergenic_length, max_intergenic_length, output_dir = "results_sRNA/IGRs"):   
@@ -50,7 +51,7 @@ def get_intergenic_regions(handle, intergenic_length, max_intergenic_length, out
     for seq_record in SeqIO.parse(handle, "genbank"):
         gene_locations = []
         for feature in seq_record.features:
-            if feature.type == 'CDS':   #'gene'
+            if feature.type == 'CDS':   #'gene'; 'CDS'
                 my_start = feature.location.start
                 my_end = feature.location.end
                 my_strand = feature.strand
@@ -334,7 +335,7 @@ def clustalw_aln():
           #                               clwstrict=True)
         #stdout, stderr = muscle_cline()
         
-        clustal_cline = ClustalwCommandline("clustalw2", infile=output_file, 
+        clustal_cline = ClustalwCommandline("clustalw", infile=output_file, 
                                          outfile=output_file.split()[0] + ".aln", 
                                          outorder="INPUT")
         stdout, stderr = clustal_cline()
@@ -905,19 +906,21 @@ chmod +x unzip_several.sh
 my_files = os.listdir(my_input_dir)
 for i in my_files:
     print("Processing file %s" %i )
-    get_intergenic_regions(os.path.join(my_input_dir, i), intergenic_length=130, max_intergenic_length=600)
+    get_intergenic_regions(os.path.join(my_input_dir, i), intergenic_length=50, max_intergenic_length=600)
 
 #Summarize the number of IGRs in each genome
+IGRs_per_genome = []
 my_results = os.listdir(os.path.join("results_sRNA", "IGRs"))
 for i in my_results:
     num = len([1 for line in open(os.path.join("results_sRNA", "IGRs", i)) if line.startswith(">")])    
     print(num, "IGRs in file", i)                                
+    IGRs_per_genome.append(num)
 
 #Cut the borders of the sequence to avoid to include regulatory elements in the analysis
 #that can belong to the 5' or 3' UTRs
 for i in my_results:
    print("Processing file %s" %i )
-   trim_sequences(os.path.join("results_sRNA", "IGRs", i), 40, 40)
+   trim_sequences(os.path.join("results_sRNA", "IGRs", i), 0, 0)
    remove(os.path.join("results_sRNA", "IGRs", i))
 
 
@@ -1153,12 +1156,9 @@ subprocess.call(cmd_esl_seqstat)
 #in the S. clavuligerus genome
 
 cmd_cmscan = ["cmscan", 
-               "-Z",  "17.088172", 
-               "--cut_ga", "--rfam", "--nohmmonly",
-               "--tblout", "Sclav-genome.tblout", "--cpu", "18",
-               "--fmt", "2", "--clanin", 
-               "Rfam_2024-04.clanin", "Rfam_2024-04.cm", 
-               my_reference_fasta]
+               "-Z",  "17.088172", "--tblout", "Sclav-genome.tblout",
+               "--cut_ga", "--rfam", "--cpu", "18",
+               "Rfam_2024-04.cm", my_reference_fasta]
 # Open the output file for writing
 with open("Sclav-genome.cmscan", "w") as output_file:
     # Redirect stdout to the output file
@@ -1175,12 +1175,9 @@ for file_name in infernal_results:
 cmd_esl_seqstat = ["esl-seqstat", IGRs_conserved_reference]
 subprocess.call(cmd_esl_seqstat)
 cmd_cmscan = ["cmscan", 
-               "-Z",  "0.775616", 
-               "--cut_ga", "--rfam", "--nohmmonly",
-               "--tblout", "Sclav-conserved_IGRs.tblout", "--cpu", "18",
-               "--fmt", "2", "--clanin", 
-               "Rfam_2024-04.clanin", "Rfam_2024-04.cm", 
-               IGRs_conserved_reference]
+              "-Z",  "0.200716", "--tblout", "Sclav-conserved_IGRs.tblout",
+              "--cut_ga", "--rfam", "--cpu", "18",
+              "Rfam_2024-04.cm", IGRs_conserved_reference]
 # Open the output file for writing
 with open("Sclav-conserved_IGRs.cmscan", "w") as output_file:
     # Redirect stdout to the output file
@@ -1198,12 +1195,10 @@ for file_name in infernal_results:
 cmd_esl_seqstat = ["esl-seqstat", my_conserved_IGRs_RNAz]
 subprocess.call(cmd_esl_seqstat)
 cmd_cmscan = ["cmscan", 
-               "-Z",  "0.027566", 
-               "--cut_ga", "--rfam", "--nohmmonly",
-               "--tblout", "Sclav-conserved_IGRs_RNAz.tblout", "--cpu", "18",
-               "--fmt", "2", "--clanin", 
-               "Rfam_2024-04.clanin", "Rfam_2024-04.cm", 
-               my_conserved_IGRs_RNAz]
+              "-Z",  "0.10411", "--tblout", "Sclav-conserved_IGRs_RNAz.tblout",
+              "--cut_ga", "--rfam", "--cpu", "18",
+              "Rfam_2024-04.cm", my_conserved_IGRs_RNAz]
+               
 # Open the output file for writing
 with open("Sclav-conserved_IGRs_RNAz.cmscan", "w") as output_file:
     # Redirect stdout to the output file
@@ -1257,7 +1252,7 @@ elapsed_time = end_time - start_time
 #For this use CPC2 available at https://cpc2.gao-lab.org/index.php
 
 #Call coding potential  results from CPC2
-coding_potential = pd.read_table("CPC2/conserved_IGRs_my_reference_cpc2.txt", sep="\t")
+coding_potential = pd.read_table("results_sRNA/CPC2/conserved_IGRs_my_reference_cpc2.txt", sep="\t")
 coding_potential_reordered = coding_potential[['#ID', 'label', 'peptide_length', 'Fickett_score', 'pI', 'ORF_integrity', 'coding_probability']]
 
 coding_potential_reordered.set_index('#ID', inplace=True)
