@@ -51,7 +51,7 @@ def get_intergenic_regions(handle, intergenic_length, max_intergenic_length, out
     for seq_record in SeqIO.parse(handle, "genbank"):
         gene_locations = []
         for feature in seq_record.features:
-            if feature.type == 'CDS':   #'gene'; 'CDS'
+            if feature.type == 'gene':   #'gene'; 'CDS'
                 my_start = feature.location.start
                 my_end = feature.location.end
                 my_strand = feature.strand
@@ -1213,10 +1213,10 @@ for file_name in infernal_results:
 
 infernal_annotations = pd.read_csv("results_sRNA/Infernal/Sclav-conserved_IGRs.tblout", comment='#', header=None)
 infernal_annotations = infernal_annotations[0].str.split(expand=True)
-infernal_annotations['description_of_target'] = infernal_annotations.apply(lambda row: ' '.join(str(val) for val in row[28:-1] if val is not None), axis=1)
+infernal_annotations['description_of_target'] = infernal_annotations.apply(lambda row: ' '.join(str(val) for val in row[17:-1] if val is not None), axis=1)
 
 
-infernal_annotations_filtered = infernal_annotations.iloc[:, [-1, 2,3,9,10,11,16,17]]
+infernal_annotations_filtered = infernal_annotations.iloc[:, [-1, 1,2,7,8,9,14,15]]
 
 
 infernal_columns = ["target_name",  "accession", "query_name", "seq_from",
@@ -1339,7 +1339,7 @@ intarRNA_output_10.to_csv("results_sRNA/IntaRNA/IntaRNA_Sclav_RNAz_conserved_10"
 
 
 my_input_dir = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/Genbank_group1"
-my_reference = "GCF_005519465.1_ASM551946v1_genomic.gbff"
+my_reference = "GCF_005519465.1_ASM551946v1_genomic.gbk"
 
 #length distribution call get_intergenic_regions without limiting the length of the IGRS
 handle = os.path.join(my_input_dir, my_reference)
@@ -1353,8 +1353,8 @@ genome_size = np.sum(replicon_size)
 
 get_intergenic_regions(handle, intergenic_length=1, 
                        max_intergenic_length=10000000, 
-                       output_dir="results_sRNA_clade2_pangenome_gene/reference_results")
-my_reference_IGRS_fasta = os.path.join("results_sRNA_clade2_pangenome_gene", 
+                       output_dir="results_sRNA_clade2_pangenome_gene_nontrimmed_50-600/reference_results")
+my_reference_IGRS_fasta = os.path.join("results_sRNA_clade2_pangenome_gene_nontrimmed_50-600", 
                                        "reference_results", 
                                       my_reference.split(".")[0] + "_IGRs.fasta")
 lengths_IGRs=[]
@@ -1367,10 +1367,10 @@ max_IGR = np.max(lengths_IGRs)
 median_lengths_IGRs= np.median(lengths_IGRs)
 total_lengths_IGRs = np.sum(lengths_IGRs)
 
-get_intergenic_regions(handle, intergenic_length=130,
+get_intergenic_regions(handle, intergenic_length=50,
                        max_intergenic_length=600,
-                       output_dir="results_sRNA_clade2_pangenome_gene/reference_results")
-my_reference_IGRS_fasta = os.path.join("results_sRNA_clade2_pangenome_gene", 
+                       output_dir="results_sRNA_clade2_pangenome_gene_nontrimmed_50-600/reference_results")
+my_reference_IGRS_fasta = os.path.join("results_sRNA_clade2_pangenome_gene_nontrimmed_50-600", 
                                        "reference_results", 
                                        my_reference.split(".")[0] + "_IGRs.fasta")
 lengths_IGRs_reduced=[]
@@ -1385,7 +1385,7 @@ median_lengths_IGRs_reduced= np.median(lengths_IGRs_reduced)
 
 #Frequency of the type of IGRs 
 
-my_reference_IGRS_fasta = os.path.join("results_sRNA_clade2_pangenome_gene", 
+my_reference_IGRS_fasta = os.path.join("results_sRNA_clade2_pangenome_gene_nontrimmed_50-600", 
                                        "IGRs", 
                                        my_reference.split(".")[0] + "_IGRs_reduced.fasta")
 
@@ -1406,11 +1406,12 @@ labels = list(df.index)
 #determine GC content of intergenic regions
 
 GCs = []
-file = "results_sRNA_clade2_pangenome_gene/IGRs/GCF_005519465_IGRs_reduced.fasta"
+file = "results_sRNA_clade2_pangenome_gene_nontrimmed_50-600/IGRs/GCF_005519465_IGRs_reduced.fasta"
 for seq_record in SeqIO.parse(file, "fasta"):
     seq_record.seq
-    GC_perc =  GC(seq_record.seq)
+    GC_perc =  gc_fraction(seq_record.seq)
     GCs.append(GC_perc)
+
 
 GCs = np.asarray(GCs)
 GCs_sorted = np.sort(GCs)
@@ -1423,7 +1424,7 @@ GC_mean = np.mean(GCs)
 
 f, ((ax1, ax2), (ax3, ax4))= plt.subplots(2, 2)
 #plt.f(figsize=(8, 6))
-ax1.hist(np.asarray(lengths_IGRs), color = "darkcyan")
+ax1.hist(np.asarray(lengths_IGRs), bins=50, color = "darkcyan")
 ax1.grid()
 ax1.set_xlabel("Length of IGR (bp)")
 ax1.set_ylabel('Number of IGRs', size = 12)
@@ -1451,13 +1452,13 @@ values4 = np.array([0,0.25,0.5,0.75,1])
 x4 = np.quantile(np.asarray(lengths_IGRs), values1)
 
 
-f.savefig ("results_sRNA_clade2_pangenome_gene/reference_results/F1_IGRs_lenght_dist_types.pdf",
+f.savefig ("results_sRNA_clade2_pangenome_gene_nontrimmed_50-600/reference_results/F1_A-B-C-D.pdf",
            dpi=300, format = "pdf")
 
 #%% count sequences in cluster of conserved IGRs fasta file
 
 # Path to the folder where the fasta files are located
-folder_path = "results_sRNA_clade2_pangenome_gene/IGRs_cluster"
+folder_path = "results_sRNA_clade2_pangenome_gene_nontrimmed_50-600/IGRs_cluster"
 
 sequences_count_per_file = [(file, sum(1 for _ in SeqIO.parse(os.path.join(folder_path, file), 'fasta')))
                             for file in os.listdir(folder_path) if file.endswith('.fasta')]
@@ -1472,8 +1473,8 @@ for file, num_sequences in sequences_count_per_file:
 
 
 sequences_per_cluster = np.asarray(sequences_per_cluster)
-f, ax1= plt.subplots()
-ax1.hist(np.asarray(sequences_per_cluster), color = "indigo")
+f2, ax1= plt.subplots()
+ax1.hist(np.asarray(sequences_per_cluster), bins = 20, color = "indigo")
 ax1.grid()
 ax1.set_xlabel("Number of sequences", size = 12)
 ax1.set_ylabel('Frequency', size = 12)
@@ -1485,10 +1486,8 @@ unique_values, frequencies = np.unique(sequences_per_cluster, return_counts=True
 frequencies_conserved_IGRs = dict(zip(unique_values, frequencies))
 
 
-putative_sRNAs_rfam_blast_infernal_CP = pd.read_table("results_sRNA_clade2_pangenome_gene/reference_results/putative_sRNAs_rfam_blast_infernal_CP.csv", 
+putative_sRNAs_rfam_blast_infernal_CP = pd.read_table("results_sRNA_clade2_pangenome_gene_nontrimmed_50-600/reference_results/putative_sRNAs_rfam_blast_infernal_CP.csv", 
                                                       sep=",", index_col=0 )
-
-
 
 sequences_count_per_file_df = pd.DataFrame(sequences_count_per_file, columns=['index', 'number_of_genomes'])
 
@@ -1519,7 +1518,75 @@ annotation_count = putative_sRNAs_rfam_blast_infernal_CP_NOG['target_name'].coun
 index_coding = putative_sRNAs_rfam_blast_infernal_CP_NOG.loc[putative_sRNAs_rfam_blast_infernal_CP_NOG['label'] == 'coding'].index[0]
 
 
-#Analyze in detail the IGRs
+#%% Extract RNAz  RNA-class probability
+
+
+def extract_rnaz_info(file_path):
+    # Define an empty list to store the extracted information
+    results_list = []
+
+    # Open the file and read it line by line
+    with open(file_path, 'r') as file:
+        lines = file.readlines()
+        # Initialize variables to store the current reading direction and SVM RNA-class probability
+        reading_direction = None
+        svm_probability = None
+        for line in lines:
+            # Check if the line marks the beginning of a new RNAz 2.1 result section
+            if line.startswith("############################  RNAz 2.1  ##############################"):
+                # If the current reading direction and SVM RNA-class probability are not None, add them to the list
+                if reading_direction is not None and svm_probability is not None:
+                    results_list.append((reading_direction, svm_probability))
+                # Reset the variables for the new result section
+                reading_direction = None
+                svm_probability = None
+            # Extract the reading direction line
+            elif "Reading direction:" in line:
+                reading_direction = line.strip()
+            # Extract the SVM RNA-class probability line
+            elif "SVM RNA-class probability:" in line:
+                svm_probability = line.strip()
+
+    # Add the last extracted reading direction and SVM RNA-class probability to the list
+    if reading_direction is not None and svm_probability is not None:
+        results_list.append((reading_direction, svm_probability))
+
+    return results_list
+
+
+rnaz_results = [rnaz for rnaz in os.listdir("results_sRNA_clade2_pangenome_gene_nontrimmed_50-600/RNAz_out") if rnaz.endswith(".out") ]
+rnaz_results.remove("RNAz_all.out")
+
+folder_rnaz = os.path.join(os.getcwd(),"results_sRNA_clade2_pangenome_gene_nontrimmed_50-600/RNAz_out")
+results_dict_rnaz = {}
+
+# Iterate over the list of files
+for file_name in rnaz_results:
+    # Get the file name without the ".fasta.out" extension
+    key = file_name.replace('.fasta.out', '')
+    file_path = os.path.join(folder_rnaz, file_name)
+    values = extract_rnaz_info(file_path)
+    # Add to the dictionary
+    results_dict_rnaz[key] = values
+
+results_dict_rnaz = {key: value for key, value in results_dict_rnaz.items() if value}
+
+results_dict_rnaz_df = pd.DataFrame.from_dict(results_dict_rnaz, orient='index', columns=['Strand1', 'Strand2'])
+
+# Split the columns containing tuples into two separate columns
+results_dict_rnaz_df[['Strand1', 'RNA_Class_probability1']] = results_dict_rnaz_df['Strand1'].apply(pd.Series)
+results_dict_rnaz_df[['Strand2', 'RNA_Class_probability2']] = results_dict_rnaz_df['Strand2'].apply(pd.Series)
+results_dict_rnaz_df = results_dict_rnaz_df[['Strand1', 'RNA_Class_probability1', 'Strand2', 'RNA_Class_probability2']]
+results_dict_rnaz_df['Strand1'] = results_dict_rnaz_df['Strand1'].str.replace('Reading direction: ', '')
+results_dict_rnaz_df['Strand2'] = results_dict_rnaz_df['Strand2'].str.replace('Reading direction: ', '')
+results_dict_rnaz_df['RNA_Class_probability1'] = results_dict_rnaz_df['RNA_Class_probability1'].str.replace('SVM RNA-class probability: ', '')
+results_dict_rnaz_df['RNA_Class_probability2'] = results_dict_rnaz_df['RNA_Class_probability2'].str.replace('SVM RNA-class probability: ', '')
+
+position = putative_sRNAs_rfam_blast_infernal_CP_NOG.columns.get_loc('RNAz') + 1  # Obtener la posición después de 'RNAz'
+for col_name, col_data in results_dict_rnaz_df.items():
+    putative_sRNAs_rfam_blast_infernal_CP_NOG.insert(position, col_name, col_data)
+
+#%% Analyze in detail the IGRs
 
 putative_sRNAs_summary = putative_sRNAs_rfam_blast_infernal_CP_NOG[[ 'Promoter1', 'Terminator1', 'RNAz','subject', 'target_name','number_of_genomes', 'label']].copy()
 
@@ -1556,7 +1623,7 @@ gff_all_cmsearch = gff_all[gff_all['source'] == 'cmsearch']
 del gff_all
 
 #Read Infernal annotations for all the genome
-infernal_annotations = pd.read_csv("results_sRNA_clade2_pangenome_gene/Infernal/Sclav-genome.tblout", comment='#', header=None, delimiter='\t')
+infernal_annotations = pd.read_csv("results_sRNA_clade2_pangenome_gene_nontrimmed_50-600/Infernal/Sclav-genome.tblout", comment='#', header=None, delimiter='\t')
 infernal_annotations = infernal_annotations[0].str.split(expand=True)
 infernal_annotations['description_of_target'] = infernal_annotations.apply(lambda row: ' '.join(str(val) for val in row[28:-1] if val is not None), axis=1)
 infernal_annotations_filtered = infernal_annotations.iloc[:, [-1, 2,3,9,10,11,16,17]]
@@ -1585,7 +1652,6 @@ infernal_annotations_filtered_sRNa = infernal_annotations_filtered_sRNa.drop('Gr
 
 
 
-Archaeal large subunit ribosomal RNA
 #length distribution of alignments of conserved IGRS
 
 
