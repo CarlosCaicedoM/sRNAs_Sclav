@@ -41,6 +41,8 @@ import re
 import wget
 import gzip
 from Bio.SeqUtils import gc_fraction
+from collections import Counter
+from scipy.stats import chi2_contingency
 #from Bio.SeqUtils import GC
 
 ### Define function to extract IGRs
@@ -425,6 +427,7 @@ def promoters_in_IGRs(fasta_file, promoters, output):
     flanking_genes = []
     coordinates = []
     orientation  = []
+    
     for seq_record in SeqIO.parse(fasta_file, "fasta"):
         headers_IGRs_conserved.append(seq_record.id)
         flanking_genes.append(seq_record.id.split("++")[1])
@@ -433,38 +436,42 @@ def promoters_in_IGRs(fasta_file, promoters, output):
     
     IGRs_conserved_dict2 = dict(zip(headers_IGRs_conserved, coordinates))
     
+    # Locate promoters predicted by G4PromFinder or Promotech in the conserved IGRs
+    empty_lists = [[] for _ in range(len(coordinates))]
+    promoters_in_IGRs = {headers_IGRs_conserved[i]: empty_lists[i] for i in range(len(headers_IGRs_conserved))}
     
-    #Locate promoters predicted by G4PromFinder or Promotech in the conserved IGRs
-    empty_lists =  [[] for _ in range(len(coordinates))]
-    promoters_in_IGRs = {headers_IGRs_conserved[i]:empty_lists[i] for i in range(len(headers_IGRs_conserved))}
-    
-    print("Locating promoter in IGRs sequences")
+    print("Locating promoters in IGRs sequences")
     
     for key, value in IGRs_conserved_dict2.items():
         start_IGR = int(IGRs_conserved_dict2[key].split("-")[0])
         end_IGR = int(IGRs_conserved_dict2[key].split("-")[1])
-        for j in promoters_promotech.itertuples():
-            if start_IGR <= j.start and end_IGR >= j.end and key.split("++")[0] == j.chrom:
-                promoter_region = (j.start, j.end, j.strand)
+        
+        for j in promoters.itertuples():
+            j_start = int(j.start)
+            j_end = int(j.end)
+            
+            if start_IGR <= j_start and end_IGR >= j_end and key.split("++")[0] == j.chrom:
+                promoter_region = (j.start, j.end, j.strand, j.sequence)
                 promoters_in_IGRs[key].append(promoter_region)
         
-    without_promoter = []
+    """without_promoter = []
     for key, value in promoters_in_IGRs.items():
-        if len(value)==0:
+        if len(value) == 0:
             without_promoter.append(1)
             
     number_of_promoters = []
     for key, value in promoters_in_IGRs.items():
-        number_of_promoters.append(len(value))
+        number_of_promoters.append(len(value))"""
     
-    
-    #Save promoters in IGRs
-    df2= pd.DataFrame.from_dict(promoters_in_IGRs, orient="index")
+    # Save promoters in IGRs
+    df2 = pd.DataFrame.from_dict(promoters_in_IGRs, orient="index")
     new_names = {str(col): f'Promoter{int(col)+1}' for col in df2.columns}
     new_names_list = list(new_names.values())
     df2.columns = new_names_list
-    df2.to_csv (os.path.join("results_sRNA/reference_results", output), index = True, header = False)
-    return df2, without_promoter, number_of_promoters
+    df2.to_csv(os.path.join("results_sRNA/reference_results", output), index=True, header=False)
+    
+    return df2
+
 
 def terminator_in_IGRs(fasta_file, terminators, output):
     headers_IGRs_conserved = []
@@ -502,10 +509,10 @@ def terminator_in_IGRs(fasta_file, terminators, output):
     df3.columns = new_names_list
 
 
-    df3.to_csv (os.path.join("results_sRNA/", "TransTermHP", output), index = True, header = False)
+    df3.to_csv(output, index = True, header = False)
 
     #Check the number of conserved IGRs with terminator 
-    has_terminators= []
+    """has_terminators= []
     for key, value in terminators_in_IGRs.items():
         if len(value) != 0:
             has_terminators.append(value)
@@ -515,9 +522,9 @@ def terminator_in_IGRs(fasta_file, terminators, output):
         if len(value)==0:
             without_terminator.append(1)
 
-    with_terminator = len(terminators_in_IGRs) - len(without_terminator)
+    with_terminator = len(terminators_in_IGRs) - len(without_terminator)"""
 
-    return df3, has_terminators, without_terminator, with_terminator
+    return df3
                     
 #%% Find promoters with G4PromFinder
 
@@ -967,10 +974,12 @@ for key, value in rbbh_dict.items():
                 
 #Extract IGR clusters and align them
 
-#muscle_exe = "./muscle"
-#makemuscle executable
-#subprocess.call(["chmod", "+x", "muscle"])
 concat_IGRs_reduced_fasta() 
+
+
+
+
+
 clustalw_aln()
 
 #Move the alignments to the "IGRs_alignments" directory
@@ -1008,7 +1017,10 @@ promoters_promotech = pd.concat(promotech_table, axis=0)
 
 #Read the data from the conserved IGRs
 IGRs_conserved_reference = os.path.join("results_sRNA", "reference_results", "conserved_IGRs_my_reference.fasta")
-promoters_in_IGRs = promoters_in_IGRs(IGRs_conserved_reference, 
+#IGRs_conserved_reference = os.path.join("results_sRNA_clade2_pangenome_gene_nontrimmed_50-600", 
+#                                       "reference_results", "conserved_IGRs_my_reference.fasta")
+
+promoters_in_IGRs_conserved= promoters_in_IGRs(IGRs_conserved_reference, 
                                       promoters_promotech,
                                       "Promoters_in_conserved_IGRs")
 
@@ -1046,10 +1058,13 @@ for replicon in replicons:
 terminators_transtermhp = pd.concat(transterm_table, axis=0)
 
 #Locate terminators predicted by TrasnTermHP in the conserved IGRs
+terminator_results_conserved_IGRS_path = os.join.path("results_sRNA", 
+                                                      "TransTermHP", 
+                                                      "terminator_in_conserved_IGRs")
 
-terminator_in_IGRs = terminator_in_IGRs(IGRs_conserved_reference, 
+terminator_in_conserved_IGRs = terminator_in_IGRs(IGRs_conserved_reference, 
                                         terminators_transtermhp,                                         
-                                        "terminator_in_conserved_IGRs")
+                                        terminator_results_conserved_IGRS_path)
 
 
 
@@ -1111,7 +1126,8 @@ rfam_results.set_index("query", inplace=True)
 
 #concatenate the results of Promotech and TranstermHP in the conserved IGRs
 
-prom_and_term = pd.concat([promoters_in_IGRs[0], terminator_in_IGRs[0]], axis = 1)
+prom_and_term = pd.concat([promoters_in_IGRs_conserved, 
+                           terminator_in_conserved_IGRs[0]], axis = 1)
 
 
 rnaz_ids = []
@@ -1263,26 +1279,6 @@ putative_sRNAs_rfam_blast_infernal_CP = pd.concat([putative_sRNAs_rfam_blast_inf
 
 
 putative_sRNAs_rfam_blast_infernal_CP.to_csv ('results_sRNA/reference_results/putative_sRNAs_rfam_blast_infernal_CP.csv', index = True, header = True)
-
-#Promotech y trasntermHP for all IGRs
-my_assembly_name1 = my_assembly_name(my_reference)
-promoters_in_ALL_IGRs = promoters_in_IGRs("results_sRNA/IGRs/" + my_assembly_name1 +"_IGRs_reduced.fasta", 
-                                      promoters_promotech,
-                                      "Promoters_in_ALL_IGRs")
-
-terminator_in_ALL_IGRs = terminator_in_IGRs("results_sRNA/IGRs/" + my_assembly_name1 +"_IGRs_reduced.fasta",
-                                        terminators_transtermhp,                                         
-                                        "terminator_in_ALL_IGRs")
-
-
-
-
-all_IGRs_term_prom = pd.concat([promoters_in_ALL_IGRs[0], 
-                                                terminator_in_ALL_IGRs[0]], axis = 1)
-
-
-
-all_IGRs_term_prom.to_csv ('results_sRNA/reference_results/all_IGRs_term_prom.csv', index = True, header = True)
 
 
 #%% command line IntaRNA
@@ -1588,9 +1584,20 @@ for col_name, col_data in results_dict_rnaz_df.items():
 
 #%% Analyze in detail the IGRs
 
-putative_sRNAs_summary = putative_sRNAs_rfam_blast_infernal_CP_NOG[[ 'Promoter1', 'Terminator1', 'RNAz','subject', 'target_name','number_of_genomes', 'label']].copy()
+putative_sRNAs_summary = putative_sRNAs_rfam_blast_infernal_CP_NOG[[ 'Promoter1', 
+                                                                    'Terminator1',
+                                                                    'RNAz',
+                                                                    'Strand1',
+                                                                    'RNA_Class_probability1',
+                                                                    'Strand2',
+                                                                    'RNA_Class_probability2',
+                                                                    'subject',
+                                                                    'target_name',
+                                                                    'number_of_genomes', 
+                                                                    'label']].copy()
 
 
+#List for Venn Diagram
 index_rnaz = putative_sRNAs_summary.loc[putative_sRNAs_summary['RNAz'] == True].index
 list_index_RNAz = index_rnaz.tolist()
 
@@ -1625,8 +1632,9 @@ del gff_all
 #Read Infernal annotations for all the genome
 infernal_annotations = pd.read_csv("results_sRNA_clade2_pangenome_gene_nontrimmed_50-600/Infernal/Sclav-genome.tblout", comment='#', header=None, delimiter='\t')
 infernal_annotations = infernal_annotations[0].str.split(expand=True)
-infernal_annotations['description_of_target'] = infernal_annotations.apply(lambda row: ' '.join(str(val) for val in row[28:-1] if val is not None), axis=1)
-infernal_annotations_filtered = infernal_annotations.iloc[:, [-1, 2,3,9,10,11,16,17]]
+infernal_annotations['description_of_target'] = infernal_annotations.apply(lambda row: ' '.join(str(val) for val in row[17:-1] if val is not None), axis=1)
+
+infernal_annotations_filtered = infernal_annotations.iloc[:, [-1, 1,2,7,8,9,14,15]]
 infernal_columns = ["target_name",  "accession", "query_name", "seq_from",
                     "seq_to", "strand", "score", "E-value"]
 infernal_annotations_filtered.columns = infernal_columns
@@ -1646,6 +1654,157 @@ infernal_annotations_filtered_sRNa = infernal_annotations_filtered_sRNa.drop('tr
 infernal_annotations_filtered_sRNa = infernal_annotations_filtered_sRNa.drop('Bacterial small signal recognition particle')
 infernal_annotations_filtered_sRNa = infernal_annotations_filtered_sRNa.drop('Bacterial RNase P class A')
 infernal_annotations_filtered_sRNa = infernal_annotations_filtered_sRNa.drop('Group II catalytic intron')
+
+
+
+
+
+
+# See the distribution of flanking genes in conserved igrs
+
+index_conserved_IGRs = putative_sRNAs_summary.index.tolist()
+index_series = pd.Series(index_conserved_IGRs)
+
+# List to store the results
+Class_Conserved_IGRs = []
+
+# Iterate over each element in the list
+for string in index_conserved_IGRs:
+    parts = string.split("++")  # Split the string by '++'
+    last_part = parts[-1]  # Get the last part
+    Class_Conserved_IGRs.append(last_part)  # Append to the new list
+
+# Create the histogram
+f3, ax1 = plt.subplots()
+ax1.hist(Class_Conserved_IGRs, color = "navy")
+ax1.grid()
+ax1.set_ylabel('Frequency', size = 12)
+
+
+frequency_class_conserved_IGRs = dict(Counter(Class_Conserved_IGRs))
+frequency_class_conserved_IGRs = list(frequency_class_conserved_IGRs.values())
+expected_freq = [0.25*len(Class_Conserved_IGRs), 
+                 0.25*len(Class_Conserved_IGRs),
+                 0.25*len(Class_Conserved_IGRs), 
+                 0.25*len(Class_Conserved_IGRs)]
+chi2, p_valor, _, _ = chi2_contingency([frequency_class_conserved_IGRs,
+                                        expected_freq])
+
+### MOTIFS in conserved IGRs
+
+def format_promoters_in_IGRs(promoters):
+    # Drop rows where 'Promoter1' is NaN
+    promoters = promoters.dropna(subset=['Promoter1'])
+    # Ensure 'Promoter1' is a string before splitting
+    promoters.loc[:, 'Promoter1'] = promoters['Promoter1'].apply(lambda x: ','.join(map(str, x)))
+    # Split 'Promoter1' into separate columns
+    promoters[['start', 'end', 'strand', 'sequence']] = promoters['Promoter1'].str.split(',', expand=True)   
+    # Drop columns starting with 'Promoter'
+    columns_to_drop = promoters.filter(regex='^Promoter').columns
+    promoters = promoters.drop(columns=columns_to_drop)
+    
+    return promoters
+
+promoters_in_IGRs_conserved = format_promoters_in_IGRs(promoters_in_IGRs_conserved)
+
+
+### MOTIF in promoter in all IGRs
+my_assembly_name1= my_assembly_name(my_reference)
+fasta_file_IGRs = f"results_sRNA_clade2_pangenome_gene_nontrimmed_50-600/IGRs/{my_assembly_name1}_IGRs_reduced.fasta"
+output_file_name = "Promoters_in_ALL_IGRs.csv"  
+promoters_in_ALL_IGRs = promoters_in_IGRs(fasta_file_IGRs, promoters_promotech, output_file_name)
+promoters_in_ALL_IGRs = format_promoters_in_IGRs(promoters_in_ALL_IGRs)
+
+
+
+
+def write_fasta_file(df, fasta_file):
+    with open(fasta_file, 'w') as f:
+        for index, row in df.iterrows():
+            fasta_id = index  # Use the index of each row as the fasta_id
+            sequence = row['sequence']
+            f.write(f'>{fasta_id}\n{sequence}\n')
+            
+write_fasta_file(promoters_in_IGRs_conserved, 
+                 'results_sRNA_clade2_pangenome_gene_nontrimmed_50-600/reference_results/promoters_in_IGRs_conserved.fasta')
+write_fasta_file(promoters_in_ALL_IGRs, 
+                 'results_sRNA_clade2_pangenome_gene_nontrimmed_50-600/reference_results/promoters_in_all_IGRs.fasta')
+
+
+
+
+#trasntermHP for all IGRs
+
+terminator_results_ALL_IGRS_path = os.path.join("results_sRNA", 
+                                                      "TransTermHP", 
+                                                      "terminator_in_All_IGRs")
+terminator_in_all_IGRs = terminator_in_IGRs(fasta_file_IGRs, 
+                                        terminators_transtermhp,                                         
+                                        terminator_results_ALL_IGRS_path)
+
+
+all_IGRs_term_prom = pd.concat([promoters_in_ALL_IGRs, 
+                                                terminator_in_all_IGRs], axis = 1)
+
+all_IGRs_term_prom.to_csv ('results_sRNA/reference_results/all_IGRs_term_prom.csv', index = True, header = True)
+
+
+
+
+#Use the cmscan program to annotate RNAs represented in Rfam 
+#in all  IGRs
+cmd_esl_seqstat = ["esl-seqstat", fasta_file_IGRs]
+subprocess.call(cmd_esl_seqstat)
+cmd_cmscan = ["cmscan", 
+              "-Z",  "1.924788", "--tblout", "Sclav-all_IGRs.tblout",
+              "--cut_ga", "--rfam", "--cpu", "18",
+              "Rfam_2024-04.cm", fasta_file_IGRs]
+# Open the output file for writing
+with open("Sclav-all_IGRs.cmscan", "w") as output_file:
+    # Redirect stdout to the output file
+    subprocess.call(cmd_cmscan, stdout=output_file)
+
+#Move the alignments to the "Infernal" directory
+infernal_results = [infernal for infernal in os.listdir(os.getcwd()) if (infernal.endswith(".cmscan") or infernal.endswith(".tblout"))]  
+for file_name in infernal_results:
+    full_file_name = os.path.join(os.getcwd(), file_name)
+    shutil.move(full_file_name, "results_sRNA/Infernal")
+
+
+infernal_annotations = pd.read_csv("results_sRNA/Infernal/Sclav-all_IGRs.tblout", comment='#', header=None)
+infernal_annotations = infernal_annotations[0].str.split(expand=True)
+infernal_annotations['description_of_target'] = infernal_annotations.apply(lambda row: ' '.join(str(val) for val in row[17:-1] if val is not None), axis=1)
+
+
+infernal_annotations_filtered = infernal_annotations.iloc[:, [-1, 1,2,7,8,9,14,15]]
+
+
+infernal_columns = ["target_name",  "accession", "query_name", "seq_from",
+                    "seq_to", "strand", "score", "E-value"]
+infernal_annotations_filtered.columns = infernal_columns
+infernal_annotations_filtered.index.duplicated()
+infernal_annotations_filtered = infernal_annotations_filtered.drop_duplicates(subset=['query_name'])
+infernal_annotations_filtered = infernal_annotations_filtered.set_index('query_name')
+all_IGRs_infernal_prom_term = pd.concat([all_IGRs_term_prom, 
+                                                infernal_annotations_filtered], axis = 1)
+
+all_IGRs_infernal_prom_term.to_csv ('results_sRNA/reference_results/all_IGRs_infernal_prom_term.csv', index = True, header = True)
+
+all_IGRs_infernal_prom_term.drop(columns=["Terminator2",
+                                          "Terminator3", 
+                                          "Terminator4", 
+                                          "Terminator5", 
+                                          "Terminator6",
+                                          "Terminator7"], inplace = True)
+
+
+#number of promoters in all IGRs
+
+number_promoters_all_IGRs = all_IGRs_infernal_prom_term['sequence'].notna().sum()
+
+number_terminators_all_IGRs = all_IGRs_infernal_prom_term['Terminator1'].notna().sum()
+
+
 
 
 
@@ -1677,30 +1836,6 @@ x = np.quantile(np.asarray(lengths_msa_conserved_IGRs), values)
 
 
 
-#Frequency of the type of IGRs for the conserved IGRs
-
-my_reference_IGRS_conserved = os.path.join("reference_results", "conserved_IGRs_my_reference.fasta")
-flanking_genes = []
-for i in SeqIO.parse(my_reference_IGRS_conserved, "fasta"):
-    flanking_genes.append(i.id.split("++")[3])
-
-# using Counter to find frequency of elements
-frequency = collections.Counter(flanking_genes)
-
-# Convert frequency to a dictionary an then to a dataframe
-frequency = dict(frequency)
-df = pd.DataFrame.from_dict(frequency, orient='index')
-df.rename(columns={0: "flanking_genes"}, inplace=True)
-labels = list(df.index)
-
-#Plot the frequencies as barplots
-values = df.iloc[:, 0]
-values = np.asarray(values)
-x = np.arange(len(labels))  # the label locations
-import matplotlib.pyplot as plt
-f, ax= plt.subplots()
-ax.bar(x, values, tick_label = labels, color = "gold")
-ax.set_ylabel('Number of IGRs', size = 12)
 
 
 
