@@ -157,29 +157,52 @@ except subprocess.CalledProcessError as e:
 #%%  analyze merged assemblies
 
 #open GFF file
+output_folder = '/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/results_rna_seq/S-clavuligerus_RNA-Seq-data_ALL'
+
+merged_gtf = os.path.join(output_folder, 
+                          "Stringtie_GFFcompare_all_samples",
+                          "merged.gtf")
 
 
-gff_all = pd.read_csv(merged_gtf, comment='#', 
+gff_stringtie = pd.read_csv(merged_gtf, comment='#', 
                             sep = "\t", header=None)
 
 gff_columns = ["seqname", "source", "feature", "start", "end", "score", 
                    "strand", "frame", "attribute" ]
-gff_all.columns = gff_columns
+gff_stringtie.columns = gff_columns
 
-gff_all_transcripts = gff_all[gff_all['feature'].str.startswith('transcript')]
+gff_stringtie_transcripts = gff_stringtie[gff_stringtie['feature'].str.startswith('transcript')]
 
-filtered_df = gff_all_transcripts[~gff_all_transcripts['attribute'].str.contains('gene-')]
+StringTie_filtered = gff_stringtie_transcripts[~gff_stringtie_transcripts['attribute'].str.contains('gene-')]
 
 #gff GFF compare
 
-GFF_Compare_output = os.path.join(output_folder, "gffcompare_output.combined.gtf")
-gff_all = pd.read_csv(GFF_Compare_output, comment='#', 
+GFF_Compare_output = os.path.join(output_folder, 
+                                  "Stringtie_GFFcompare_all_samples", 
+                                  "gffcompare_output.combined.gtf")
+GFFCompare = pd.read_csv(GFF_Compare_output, comment='#', 
                             sep = "\t", header=None)
 
 gff_columns = ["seqname", "source", "feature", "start", "end", "score", 
                    "strand", "frame", "attribute" ]
-gff_all.columns = gff_columns
+GFFCompare.columns = gff_columns
 
-gff_all_transcripts = gff_all[gff_all['feature'].str.startswith('transcript')]
+GFFCompare_transcripts = GFFCompare[GFFCompare['feature'].str.startswith('transcript')]
 
-filtered_df = gff_all_transcripts[~gff_all_transcripts['attribute'].str.contains('gene-')]
+GFFCompare_IGR = GFFCompare_transcripts[GFFCompare_transcripts['attribute'].str.contains('class_code "u"')]
+
+GFFCompare_p = GFFCompare_transcripts[GFFCompare_transcripts['attribute'].str.contains('class_code "p"')]
+GFFCompare_o = GFFCompare_transcripts[GFFCompare_transcripts['attribute'].str.contains('class_code "o"')]
+
+
+def extract_num_samples(attribute):
+    for item in attribute.split(';'):
+        if 'num_samples' in item:
+            return item.split('"')[1]
+
+# Aplicar la función a la columna attributes
+GFFCompare_IGR['num_samples'] = GFFCompare_IGR['attribute'].apply(extract_num_samples)
+
+GFFCompare_p['num_samples'] = GFFCompare_p['attribute'].apply(extract_num_samples)
+
+GFFCompare_o['num_samples'] = GFFCompare_o['attribute'].apply(extract_num_samples)

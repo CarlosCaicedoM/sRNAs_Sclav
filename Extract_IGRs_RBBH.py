@@ -1335,7 +1335,7 @@ intarRNA_output_10.to_csv("results_sRNA/IntaRNA/IntaRNA_Sclav_RNAz_conserved_10"
 
 
 my_input_dir = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/Genbank_group1"
-my_reference = "GCF_005519465.1_ASM551946v1_genomic.gbk"
+my_reference = "GCF_005519465.1_ASM551946v1_genomic.gbff"
 
 #length distribution call get_intergenic_regions without limiting the length of the IGRS
 handle = os.path.join(my_input_dir, my_reference)
@@ -1582,6 +1582,10 @@ position = putative_sRNAs_rfam_blast_infernal_CP_NOG.columns.get_loc('RNAz') + 1
 for col_name, col_data in results_dict_rnaz_df.items():
     putative_sRNAs_rfam_blast_infernal_CP_NOG.insert(position, col_name, col_data)
 
+putative_sRNAs_rfam_blast_infernal_CP.to_csv ('results_sRNA/reference_results/putative_sRNAs_rfam_blast_infernal_CP.csv', index = True, header = True)
+
+
+
 #%% Analyze in detail the IGRs
 
 putative_sRNAs_summary = putative_sRNAs_rfam_blast_infernal_CP_NOG[[ 'Promoter1', 
@@ -1748,6 +1752,30 @@ all_IGRs_term_prom = pd.concat([promoters_in_ALL_IGRs,
 
 all_IGRs_term_prom.to_csv ('results_sRNA/reference_results/all_IGRs_term_prom.csv', index = True, header = True)
 
+#BLASTn search
+my_IGRs_reference = "results_sRNA_clade2_pangenome_gene_nontrimmed_50/IGRs/GCF_005519465_IGRs_reduced.fasta"
+rfam_db = os.path.join(os.getcwd(), "raw_data", "rfam_sequences", "Rfam.fa")
+
+
+cline_rfam = NcbiblastnCommandline(query=my_IGRs_reference, 
+                                  db=rfam_db,
+                                  evalue=1e-6, 
+                                  out = os.path.join("results_sRNA", "reference_results", "my_conserved_IGRs_RNAz_blastn_out.txt"), 
+                                  task = 'blastn',
+                                  num_threads = 10,
+                                  max_hsps = 1,
+                                  max_target_seqs=1,
+                                  #dust = 'no',
+                                  outfmt="6 qseqid sseqid pident qcovs qlen slen length bitscore evalue")
+stdout, stderr = cline_rfam()
+
+
+rfam_results = pd.read_table(os.path.join("results_sRNA", "reference_results", "my_conserved_IGRs_RNAz_blastn_out.txt"), sep='\t', header=None)
+
+rfam_results.columns = ["query", "subject", "identity", "coverage",
+                   "qlength", "slength", "alength",
+                   "bitscore", "E-value"]
+rfam_results.set_index("query", inplace=True)
 
 
 
@@ -1811,7 +1839,7 @@ number_terminators_all_IGRs = all_IGRs_infernal_prom_term['Terminator1'].notna()
 
 
 
-#length distribution of alignments of conserved IGRS
+#%% length distribution of alignments of conserved IGRS
 
 
 msa_conserved_IGRs = [msa for msa in os.listdir("results_sRNA/IGRs_alignments") if msa.endswith(".aln") ]
