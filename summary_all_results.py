@@ -1,21 +1,77 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Wed Apr 10 11:41:56 2024
+Created on Mon May 27 23:26:58 2024
 
 @author: usuario
 """
-   
 
-    
 #%% Read and format the data
 import pandas as pd
 import os
 
-bioinformatics_predictions = pd.read_table("results_sRNA_clade2_pangenome_gene_nontrimmed_50-600/reference_results/putative_sRNAs_rfam_blast_infernal_CP_NOG.csv", sep=",")
-bioinformatics_predictions = bioinformatics_predictions.rename(columns={bioinformatics_predictions.columns[0]: 'header'})
 
-#Read and format Rockhopper results
+#Add data of promoters and terminators detection
+all_IGRs_term_prom = pd.read_table("results_sRNA_clade2_pangenome_gene_nontrimmed_50-600/reference_results/all_IGRs_term_prom.csv", sep=",")
+all_IGRs_term_prom = all_IGRs_term_prom.rename(columns={all_IGRs_term_prom.columns[0]: 'header'})
+all_IGRs_term_prom['Promoter1'] = all_IGRs_term_prom.apply(lambda row: (row['start'], row['end'], row['strand'], row['sequence']), axis=1)
+all_IGRs_term_prom.drop(columns=['start', 'end', 'strand', 'sequence'], inplace=True)
+columns = [all_IGRs_term_prom.columns[0]] + ['Promoter1'] + [col for col in all_IGRs_term_prom if col != 'Promoter1' and col != all_IGRs_term_prom.columns[0]]
+all_IGRs_term_prom = all_IGRs_term_prom[columns]
+all_IGRs_term_prom.set_index('header', inplace=True)
+
+#add data about conservation and RNAz predictions
+
+conserved_IGRs = pd.read_table("results_sRNA_clade2_pangenome_gene_nontrimmed_50-600/reference_results/putative_sRNAs_rfam_blast_infernal_CP_NOG.csv", sep=",")
+conserved_IGRs = conserved_IGRs.rename(columns={conserved_IGRs.columns[0]: 'header'})
+
+columns_to_extract = ['header', 'RNAz', 'Strand1', 'RNA_Class_probability1', 
+                      'Strand2', 'RNA_Class_probability2', 'number_of_genomes']
+conserved_IGRs = conserved_IGRs[columns_to_extract]
+conserved_IGRs.set_index('header', inplace=True)
+
+IGRS_prom_term_RNAz = pd.concat([all_IGRs_term_prom, 
+                                                conserved_IGRs], axis = 1)
+
+
+# Add data of coding potential
+
+coding_potential = pd.read_table("results_sRNA_clade2_pangenome_gene_nontrimmed_50-600/CPC2/GCF_005519465_ALL-IGRS_cpc2.txt", sep="\t")
+coding_potential_reordered = coding_potential[['#ID', 'label', 'peptide_length', 'Fickett_score', 'pI', 'ORF_integrity', 'coding_probability']]
+
+coding_potential_reordered.set_index('#ID', inplace=True)
+
+
+IGRS_prom_term_RNAz_CP = pd.concat([IGRS_prom_term_RNAz, 
+                                                coding_potential_reordered], axis = 1)
+
+#Add blast annotations
+
+
+#Add Infernal annotations
+
+rfam_results = os.path.join("results_sRNA_clade2_pangenome_gene_nontrimmed_50-600",
+                                          "Infernal", 
+                                          "Sclav-all_IGRs.tblout")
+
+infernal_annotations = pd.read_csv(rfam_results, comment='#', header=None)
+infernal_annotations = infernal_annotations[0].str.split(expand=True)
+infernal_annotations['description_of_target'] = infernal_annotations.apply(lambda row: ' '.join(str(val) for val in row[17:-1] if val is not None), axis=1)
+infernal_annotations_filtered = infernal_annotations.iloc[:, [-1, 1,2,7,8,9,14,15]]
+
+infernal_columns = ["target_name",  "accession", "query_name", "seq_from",
+                    "seq_to", "strand", "score", "E-value"]
+infernal_annotations_filtered.columns = infernal_columns
+infernal_annotations_filtered.index.duplicated()
+infernal_annotations_filtered = infernal_annotations_filtered.drop_duplicates(subset=['query_name'])
+infernal_annotations_filtered = infernal_annotations_filtered.set_index('query_name')
+
+IGRS_prom_term_RNAz_CP_INF = pd.concat([IGRS_prom_term_RNAz_CP, 
+                                                infernal_annotations_filtered], axis = 1)
+
+
+
+#Add Rockhopper results
 
 ##CHR
 rockhopper_CHR = pd.read_table("results_rna_seq/S-clavuligerus_RNA-Seq-data_SRA/Rockhopper3/NZ_CP027858_transcripts.txt", sep="\t") 
@@ -51,13 +107,6 @@ del rockhopper_plasmid
 
 rockhopper_all_filtered_nonAS = pd.concat([rockhopper_CHR_filtered_nonAS, 
                                           rockhopper_plasmid_filtered_nonAS])
-
-#rockhopper_all_filtered_nonAS.set_index('Synonym', inplace=True)
-
-
-
-
-
 
 #%% 
 
@@ -129,8 +178,10 @@ for index, row in final_sRNAs.iterrows():
         # Increment the counter for the next entry
         counter += 1    
 
-
 #%% Compare bioinformatics predictions and Rockhopper
+bioinformatics_predictions = IGRS_prom_term_RNAz_CP_INF
+bioinformatics_predictions.reset_index(inplace=True)
+bioinformatics_predictions.rename(columns={'index': 'header'}, inplace=True)
 
 headers_IGRs_conserved = []
 flanking_genes = []
@@ -174,27 +225,8 @@ print(verified_sRNAs)
 
 #Concatenate bioinformatics_predictions with Rockhopper Predictions
 bioinformatics_predictions.set_index('header', inplace=True)
-putative_sRNAs_rfam_blast_infernal_CP_rockhopper = pd.concat([bioinformatics_predictions, 
+IGRS_prom_term_RNAz_CP_INF_R = pd.concat([bioinformatics_predictions, 
                                                 df2_predictions_in_Rockhopper], axis = 1)
-
-
-
-
-putative_sRNAs_summary = bioinformatics_predictions[[ 'Promoter1', 
-                                                     'Terminator1',
-                                                     'RNAz',
-                                                     'Strand1',
-                                                     'RNA_Class_probability1',
-                                                     'Strand2',
-                                                     'RNA_Class_probability2',
-                                                     'subject',
-                                                     'target_name',
-                                                     'number_of_genomes', 
-                                                     'label']].copy()
-
-putative_sRNAs_predictions_rockhopper_summary =  pd.concat([putative_sRNAs_summary, 
-                                                df2_predictions_in_Rockhopper], axis = 1)
-
 
 
 #%% abrir predicciones apero GFF y comparar cuales de las predicciones
@@ -262,11 +294,8 @@ for index, row in APERO_Sclav2.iterrows():
 sRNAS_APERO = APERO_Sclav2[APERO_Sclav2['name'] == 'putative_sRNA']
 sRNAS_APERO = sRNAS_APERO[sRNAS_APERO['feature'] == 'putative_sRNA']
 
- 
 #%% Compare bioinformatics predictions and Rockhopper
 
-    
-    
 #Locate sRNAs in Bioinformatics predictions in the Rockhopper results
 empty_lists2 =  [[] for _ in range(len(coordinates))]
 predictions_in_APERO = {headers_IGRs_conserved[i]:empty_lists2[i] for i in range(len(headers_IGRs_conserved))}
@@ -284,29 +313,41 @@ APERO_labels = [f"APERO_{i+1}" for i in range(len(df2_predictions_in_APERO.colum
 df2_predictions_in_APERO.columns = APERO_labels
 
 #Concatenate bioinformatics_predictions with Rockhopper Predictions
-putative_sRNAs_rfam_blast_infernal_CP_rockhopper_apero = pd.concat([putative_sRNAs_rfam_blast_infernal_CP_rockhopper, 
-                                                df2_predictions_in_APERO], axis = 1)
-
-
-putative_sRNAs_predictions_RA_summary =  pd.concat([putative_sRNAs_predictions_rockhopper_summary, 
+IGRS_prom_term_RNAz_CP_INF_RA = pd.concat([IGRS_prom_term_RNAz_CP_INF_R, 
                                                 df2_predictions_in_APERO], axis = 1)
 
 
 
 
 
-#comparar apero vs rockhopper
 
 
 
 
-# crear una sola tabla donde se vean si la region fue predicha por
-# apero, rockhopper o mis predicciones basado en las pedicciones
-#como por ejemplo decir, validado por...
 
 
-#Restringir predicciones de rocjhopper para tener solo aquellas que aparezcan en 
-#al menos 10 predicciones experimentales
+
+
+
+
+IGRs_summary = bioinformatics_predictions[[ 'Promoter1', 
+                                                     'Terminator1',
+                                                     'RNAz',
+                                                     'Strand1',
+                                                     'RNA_Class_probability1',
+                                                     'Strand2',
+                                                     'RNA_Class_probability2',
+                                                     'subject',
+                                                     'target_name',
+                                                     'number_of_genomes', 
+                                                     'label']].copy()
+
+putative_sRNAs_predictions_rockhopper_summary =  pd.concat([putative_sRNAs_summary, 
+                                                df2_predictions_in_Rockhopper], axis = 1)
+
+
+
+
 
 
 
