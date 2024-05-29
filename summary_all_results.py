@@ -9,6 +9,7 @@ Created on Mon May 27 23:26:58 2024
 #%% Read and format the data
 import pandas as pd
 import os
+import matplotlib.pyplot as plt
 
 
 #Add data of promoters and terminators detection
@@ -47,6 +48,18 @@ IGRS_prom_term_RNAz_CP = pd.concat([IGRS_prom_term_RNAz,
 
 #Add blast annotations
 
+blast_all_IGRs = pd.read_table(os.path.join("results_sRNA_clade2_pangenome_gene_nontrimmed_50-600", 
+                                          "reference_results", 
+                                          "all_IGRs_blastn_out.txt"), sep='\t', header=None)
+
+blast_all_IGRs.columns = ["query", "subject", "identity", "coverage",
+                   "qlength", "slength", "alength",
+                   "bitscore", "E-value"]
+blast_all_IGRs.set_index("query", inplace=True)
+
+IGRS_prom_term_RNAz_CP_B = pd.concat([IGRS_prom_term_RNAz_CP, 
+                                                blast_all_IGRs], axis = 1)
+
 
 #Add Infernal annotations
 
@@ -66,7 +79,7 @@ infernal_annotations_filtered.index.duplicated()
 infernal_annotations_filtered = infernal_annotations_filtered.drop_duplicates(subset=['query_name'])
 infernal_annotations_filtered = infernal_annotations_filtered.set_index('query_name')
 
-IGRS_prom_term_RNAz_CP_INF = pd.concat([IGRS_prom_term_RNAz_CP, 
+IGRS_prom_term_RNAz_CP_B_INF = pd.concat([IGRS_prom_term_RNAz_CP_B, 
                                                 infernal_annotations_filtered], axis = 1)
 
 
@@ -179,7 +192,7 @@ for index, row in final_sRNAs.iterrows():
         counter += 1    
 
 #%% Compare bioinformatics predictions and Rockhopper
-bioinformatics_predictions = IGRS_prom_term_RNAz_CP_INF
+bioinformatics_predictions = IGRS_prom_term_RNAz_CP_B_INF
 bioinformatics_predictions.reset_index(inplace=True)
 bioinformatics_predictions.rename(columns={'index': 'header'}, inplace=True)
 
@@ -225,7 +238,7 @@ print(verified_sRNAs)
 
 #Concatenate bioinformatics_predictions with Rockhopper Predictions
 bioinformatics_predictions.set_index('header', inplace=True)
-IGRS_prom_term_RNAz_CP_INF_R = pd.concat([bioinformatics_predictions, 
+IGRS_prom_term_RNAz_CP_B_INF_R = pd.concat([bioinformatics_predictions, 
                                                 df2_predictions_in_Rockhopper], axis = 1)
 
 
@@ -313,41 +326,43 @@ APERO_labels = [f"APERO_{i+1}" for i in range(len(df2_predictions_in_APERO.colum
 df2_predictions_in_APERO.columns = APERO_labels
 
 #Concatenate bioinformatics_predictions with Rockhopper Predictions
-IGRS_prom_term_RNAz_CP_INF_RA = pd.concat([IGRS_prom_term_RNAz_CP_INF_R, 
+IGRS_prom_term_RNAz_CP_B_INF_R_A = pd.concat([IGRS_prom_term_RNAz_CP_B_INF_R, 
                                                 df2_predictions_in_APERO], axis = 1)
 
 
 
 
+#%% Summary
 
 
 
+apero_columns = [col for col in IGRS_prom_term_RNAz_CP_B_INF_R_A.columns if col.startswith('APERO')]
+R_columns = [col for col in IGRS_prom_term_RNAz_CP_B_INF_R_A.columns if col.startswith('Rockhopper')]
 
 
-
-
-
-
-
-
-IGRs_summary = bioinformatics_predictions[[ 'Promoter1', 
+IGRs_summary = IGRS_prom_term_RNAz_CP_B_INF_R_A[[ 'Promoter1', 
                                                      'Terminator1',
+                                                     'number_of_genomes',
                                                      'RNAz',
                                                      'Strand1',
                                                      'RNA_Class_probability1',
                                                      'Strand2',
                                                      'RNA_Class_probability2',
+                                                     'label',
                                                      'subject',
                                                      'target_name',
-                                                     'number_of_genomes', 
-                                                     'label']].copy()
-
-putative_sRNAs_predictions_rockhopper_summary =  pd.concat([putative_sRNAs_summary, 
-                                                df2_predictions_in_Rockhopper], axis = 1)
+                                                    ]+R_columns+
+                                                apero_columns].copy()
 
 
+#%% See the predictions in common between Rockhopper and APERO 
+
+IGRs_summary_Rockhopper = IGRs_summary.dropna(subset=['Rockhopper_1'])
+
+IGRs_summary_APERO = IGRs_summary.dropna(subset=['APERO_1'])
 
 
+#%% save results
 
 
 

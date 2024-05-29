@@ -43,6 +43,7 @@ from Bio.SeqUtils import gc_fraction
 from collections import Counter
 from scipy.stats import chi2_contingency
 import random
+from pandas.errors import EmptyDataError
 
 #from Bio.SeqUtils import GC
 
@@ -203,12 +204,12 @@ def analyze_blast_results(output_dir="results_sRNA/IGRs_blast"):
     my_reference_assembly = my_assembly_name(my_reference)
 
     forward_blast = []
-    for i,j in enumerate(blast_result):
+    for i, j in enumerate(blast_result):
         if my_reference_assembly in blast_result[i].split("_vs_")[0]:
             forward_blast.append(j)
 
     reverse_blast = []
-    for i,j in enumerate(blast_result):
+    for i, j in enumerate(blast_result):
         if my_reference_assembly not in blast_result[i].split("_vs_")[0]:
             reverse_blast.append(j)
     
@@ -216,60 +217,46 @@ def analyze_blast_results(output_dir="results_sRNA/IGRs_blast"):
     reverse_blast = sorted(reverse_blast)
 
     for forward, reverse in zip(forward_blast, reverse_blast):
-        # The detailed explanation for this chunk of code can be found at
-        # https://widdowquinn.github.io/2018-03-06-ibioic/02-sequence_databases/05-blast_for_rbh.html
-        
-        my_data_forward = pd.read_table(os.path.join(output_dir, forward), sep='\t', header=None)
-        
-        my_data_reverse = pd.read_table(os.path.join(output_dir, reverse), sep='\t', header=None)
-        
+        try:
+            my_data_forward = pd.read_table(os.path.join(output_dir, forward), sep='\t', header=None)
+            my_data_reverse = pd.read_table(os.path.join(output_dir, reverse), sep='\t', header=None)
+        except EmptyDataError:
+            print(f"Empty file found: {forward} or {reverse}. Skipping these files.")
+            continue
         
         my_data_forward.columns = ["query", "subject", "identity", "coverage",
-                   "qlength", "slength", "alength",
-                   "bitscore", "E-value"]
-        
-        
+                                   "qlength", "slength", "alength",
+                                   "bitscore", "E-value"]
         my_data_reverse.columns = ["query", "subject", "identity", "coverage",
-                   "qlength", "slength", "alength",
-                   "bitscore", "E-value"]
+                                   "qlength", "slength", "alength",
+                                   "bitscore", "E-value"]
         
-        my_data_forward['norm_bitscore'] = my_data_forward.bitscore/my_data_forward.qlength
-        my_data_reverse['norm_bitscore'] = my_data_reverse.bitscore/my_data_reverse.qlength
+        my_data_forward['norm_bitscore'] = my_data_forward.bitscore / my_data_forward.qlength
+        my_data_reverse['norm_bitscore'] = my_data_reverse.bitscore / my_data_reverse.qlength
         
+        my_data_forward['qcov'] = my_data_forward.alength / my_data_forward.qlength
+        my_data_reverse['qcov'] = my_data_reverse.alength / my_data_reverse.qlength
+        my_data_forward['scov'] = my_data_forward.alength / my_data_forward.slength
+        my_data_reverse['scov'] = my_data_reverse.alength / my_data_reverse.slength
         
-        # Create query and subject coverage columns in both dataframes
-        my_data_forward['qcov'] = my_data_forward.alength/my_data_forward.qlength
-        my_data_reverse['qcov'] = my_data_reverse.alength/my_data_reverse.qlength
-        my_data_forward['scov'] = my_data_forward.alength/my_data_forward.slength
-        my_data_reverse['scov'] = my_data_reverse.alength/my_data_reverse.slength
+        my_data_forward['qcov'] = my_data_forward['qcov'].clip(upper=1)
+        my_data_reverse['qcov'] = my_data_reverse['qcov'].clip(upper=1)
+        my_data_forward['scov'] = my_data_forward['scov'].clip(upper=1)
+        my_data_reverse['scov'] = my_data_reverse['scov'].clip(upper=1)
         
-        # Clip maximum coverage values at 1.0
-        my_data_forward['qcov'] = my_data_forward['qcov'].clip(upper = 1)
-        my_data_reverse['qcov'] = my_data_reverse['qcov'].clip(upper = 1)
-        my_data_forward['scov'] = my_data_forward['scov'].clip(upper = 1)
-        my_data_reverse['scov'] = my_data_reverse['scov'].clip(upper = 1)
-        
-        
-        # Merge forward and reverse results
         rbbh = pd.merge(my_data_forward, my_data_reverse[['query', 'subject']],
                         left_on='subject', right_on='query',
                         how='outer')
         
         rbbh = rbbh.loc[rbbh.query_x == rbbh.subject_y]
-        
-        # Group duplicate RBH rows, taking the maximum value in each column
         rbbh = rbbh.groupby(['query_x', 'subject_x']).max()
-    
-        #Append the results to RBBH_summary
         rbbh_summary.append(rbbh)
     
-    #Filter by Coverage 
-    rbbh_summary_coverage =[]
+    rbbh_summary_coverage = []
     coverage = 0.7
     for rbbh in rbbh_summary:
         rbbh_coverage = rbbh[rbbh["qcov"] >= coverage]
         rbbh_summary_coverage.append(rbbh_coverage)
-    
     
     rbbh_concat = pd.concat(rbbh_summary_coverage)
     return rbbh_concat
@@ -543,143 +530,6 @@ def shuffle_sequences(fasta_file):
                     
 
 
-#%% Gbk_to_ppt
-
-"""
-Title: GenBank file to Protein Table file (.ptt) and RNA table file (.rnt) parser
-Input files: [./sequence.gb, ./*.gb (batch)]
-
-This script creates a Protein Table file (.ptt) and a RNA table file (.rnt) from the given GenBank file
-Multiple files can be given (or using *) for batch processing
-
-@author: Henry Wiersma UMCG, Groningen
-@date: 7-11-2017
-@version: 1.0
-"""
-
-#createFile(pttOutputFilePath, pttHeader, description, length, pttRows)
-#filePath = pttOutputFilePath
-#headerTemplate=pttHeader
-#rows = pttRows
-
-def createFile(filePath, headerTemplate, description, length, rows):
-    outputFile = open(filePath, 'w')
-    header = headerTemplate.format(description=description,
-                                   length=length,
-                                   numRows=len(rows))
-    outputFile.write(header)
-    for row in rows:
-        outputFile.write("%s\n" % row)
-    outputFile.close()
-
-
-def processFile(filePath, outputPath):
-    #rna feature types in the GenBank file (https://www.ncbi.nlm.nih.gov/books/NBK293913/)
-    rntFeatureTypes = ["rna", "mRNA", "tRNA", "rRNA", "ncRNA", "tmRNA", "misc_RNA"]
-
-    #Template of the header of the tables
-    pttHeader="{description} - 1..{length}\n{numRows} proteins\nLocation\tStrand\tLength\tPID\tGene\tSynonym\tCode\tCOG\tProduct\n"
-    rntHeader="{description} - 1..{length}\n{numRows} RNAs\nLocation\tStrand\tLength\tPID\tGene\tSynonym\tCode\tCOG\tProduct\n"
-
-    #template of the rows of the table
-    #row="{location}\t{strand}\t{length}\t{pid}\t{gene}\t{synonym}\t{code}\t{cog}\t{product}\r\n"
-    row="{location}\t{strand}\t{length}\t{pid}\t{gene}\t{synonym}\t{code}\t{cog}\t{product}"
-
-
-    file = SeqIO.parse(filePath, "genbank")
-    
-    print("Process file", os.path.basename(filePath))
-    for seqRec in file:
-        fileNameBase = seqRec.id
-        pttRows = []
-        rntRows = []
-
-        # get description of the gb file
-        description = "Description not available"
-        if seqRec.description and seqRec.description != "" and seqRec.id and seqRec.id != "":
-            description = seqRec.id + " " + seqRec.description
-        elif seqRec.description and seqRec.description != "":
-            description = seqRec.description
-        elif seqRec.id and seqRec.id != "":
-            description = seqRec.id
-
-        # get the sequence length
-        length = 0
-        if seqRec.seq:
-            length = len(seqRec.seq)
-        a =  randint(100000000, 500000000)     # randint is inclusive at both ends
-        pid = a
-        for i, feature in enumerate(seqRec.features):
-            # location
-            paramLocation = "{}..{}".format((feature.location.start + 1), feature.location.end)
-
-            # strand
-            paramStrand = "+" if feature.location.strand == 1 else "-"
-
-            # gene name
-            paramGene = "-"
-            if "gene" in feature.qualifiers and len(feature.qualifiers["gene"]) > 0 and feature.qualifiers["gene"][
-                0] != "":
-                paramGene = (feature.qualifiers["gene"][0])
-
-            # locus tag (Synonym)
-            paramSynonym = "-"
-            if "locus_tag" in feature.qualifiers and len(feature.qualifiers["locus_tag"]) > 0 and \
-                            feature.qualifiers["locus_tag"][0] != "":
-                paramSynonym = (feature.qualifiers["locus_tag"][0])
-
-            # product descriptopn
-            paramProduct = "-"
-            if "product" in feature.qualifiers and len(feature.qualifiers["product"]) > 0 and \
-                            feature.qualifiers["product"][
-                                0] != "":
-                paramProduct = (feature.qualifiers["product"][0])
-                
-            if feature.type == "CDS":
-
-                # length of product
-                paramLength = round((feature.location.end - feature.location.start) / 3 - 1)
-
-                tempRow = row.format(location=paramLocation,
-                                     strand=paramStrand,
-                                     length=paramLength,
-                                     pid=pid+ int(i/2),
-                                     gene=paramGene,
-                                     synonym=paramSynonym,
-                                     code="-",
-                                     cog="-",
-                                     product=paramProduct)
-                pttRows.append(tempRow)
-
-            elif feature.type in rntFeatureTypes:
-
-                # length of product
-                paramLength = round((feature.location.end - feature.location.start) - 1)
-
-                tempRow = row.format(location=paramLocation,
-                                     strand=paramStrand,
-                                     length=paramLength,
-                                     pid="-",
-                                     gene=paramGene,
-                                     synonym=paramSynonym,
-                                     code="-",
-                                     cog="-",
-                                     product=paramProduct)
-                rntRows.append(tempRow)
-
-        # create files
-       
-        pttOutputFilePath = os.path.join(outputPath, "{}.ptt".format(fileNameBase))
-        rntOutputFilePath = os.path.join(outputPath, "{}.rnt".format(fileNameBase))
-
-        print("number of ptt rows:\t{}\t({})".format(len(pttRows), pttOutputFilePath))
-        print("number of rnt rows:\t{}\t({})".format(len(rntRows), rntOutputFilePath))
-
-        createFile(pttOutputFilePath, pttHeader, description, length, pttRows)
-        createFile(rntOutputFilePath, rntHeader, description, length, rntRows)
-
-
-
 
     
 #%%  Workflow
@@ -692,58 +542,60 @@ def log_directory_contents(directory):
         print(filename)
 
 def workflow(my_input_dir, my_reference):
-    
-
+  
     # Define directories and create them if necessary
     my_current_dirs = [name for name in os.listdir(".") if os.path.isdir(name)]
-
+    
     if "results_sRNA" in my_current_dirs:
         shutil.rmtree("results_sRNA")
     os.mkdir("results_sRNA")
-
+    
+    
+    
     os.mkdir(os.path.join("results_sRNA", "IGRs_blast"))
     os.mkdir(os.path.join("results_sRNA", "IGRs_cluster"))
     os.mkdir(os.path.join("results_sRNA", "IGRs_alignments"))
     os.mkdir(os.path.join("results_sRNA", "reference_results"))
     os.mkdir(os.path.join("results_sRNA", "IGRs"))
-
-    # Log the contents of the input directory
-    log_directory_contents(my_input_dir)
-
-    # Check if the reference file exists
-    reference_file_path = os.path.join(my_input_dir, my_reference)
-    if not os.path.exists(reference_file_path):
-        print(f"Reference file '{my_reference}' not found in directory '{my_input_dir}'")
-        return
-
-    # Extract IGRs for the genomes in the input directory
+    
+    """   
+     # Log the contents of the input directory
+        log_directory_contents(my_input_dir)
+    
+        # Check if the reference file exists
+        reference_file_path = os.path.join(my_input_dir, my_reference)
+        if not os.path.exists(reference_file_path):
+            print(f"Reference file '{my_reference}' not found in directory '{my_input_dir}'")
+            return
+    """
+        # Extract IGRs for the genomes in the input directory
     my_files = os.listdir(my_input_dir)
     for i in my_files:
         print(f"Processing file {i}")
         get_intergenic_regions(os.path.join(my_input_dir, i), intergenic_length=50, max_intergenic_length=600)
-
-    # Summarize the number of IGRs in each genome
+    
+        # Summarize the number of IGRs in each genome
     IGRs_per_genome = []
     my_results = os.listdir(os.path.join("results_sRNA", "IGRs"))
     for i in my_results:
         num = len([1 for line in open(os.path.join("results_sRNA", "IGRs", i)) if line.startswith(">")])
         print(num, "IGRs in file", i)
         IGRs_per_genome.append(num)
-
-    # Cut the borders of the sequence to avoid including regulatory elements
+    
+        # Cut the borders of the sequence to avoid including regulatory elements
     for i in my_results:
         print(f"Processing file {i}")
         trim_sequences(os.path.join("results_sRNA", "IGRs", i), 0, 0)
         remove(os.path.join("results_sRNA", "IGRs", i))
 
-    my_results2 = os.listdir(os.path.join("results_sRNA", "IGRs"))
 
-    # Shuffle sequences and save to file
-    for result in my_results2:
-        fasta_file = os.path.join("results_sRNA", "IGRs", result)
-        shuffled_sequences = shuffle_sequences(fasta_file)
-        output_file = os.path.join("results_sRNA", "IGRs", result)
-        SeqIO.write(shuffled_sequences, output_file, "fasta")
+
+    fasta_file  = my_genome(my_reference, output_dir = "results_sRNA/IGRs")
+    shuffled_sequences = shuffle_sequences(fasta_file)
+    output_file = fasta_file
+    SeqIO.write(shuffled_sequences, output_file, "fasta")
+
+
 
     # Create the databases
     make_blast_db()
@@ -786,7 +638,7 @@ def workflow(my_input_dir, my_reference):
     clustalw_aln()
     
     #Move the alignments to the "IGRs_alignments" directory
-    alignments = [aln for aln in os.listdir("results_sRNA/IGRs_cluster") if aln.endswith(".aln") ]  
+    alignments = [aln for aln in os.listdir("results_sRNA/IGRs_cluster") if aln.endswith(".aln")]  
     for file_name in alignments:
         full_file_name = os.path.join("results_sRNA/IGRs_cluster", file_name)
         shutil.move(full_file_name, os.getcwd())
@@ -795,7 +647,6 @@ def workflow(my_input_dir, my_reference):
 
 
 #%%
-# Importa las librerías necesarias
 
 # Define la función workflow y otras funciones necesarias
 
@@ -803,8 +654,14 @@ def workflow(my_input_dir, my_reference):
 my_input_dir = "/home/usuario/Documentos/Carlos_PhD/sRNAS_Sclav/raw_data/Genbank_clade2_pangenome"
 my_reference = "GCF_005519465.1_ASM551946v1_genomic.gbff"
 
+
 # Define el número de veces que quieres ejecutar la función
-num_executions = 1000  # Cambia este valor según lo que necesites
+num_executions = 1000000  # Cambia este valor según lo que necesites
+start_time = time.time()
 for _ in range(num_executions):
     workflow(my_input_dir, my_reference)
 
+elapsed_time = time.time() - start_time
+
+# Imprime el tiempo transcurrido
+print(f"Tiempo total de ejecución: {elapsed_time} segundos")

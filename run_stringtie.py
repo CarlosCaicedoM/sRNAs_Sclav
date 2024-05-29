@@ -9,6 +9,7 @@ Created on Wed May 22 15:14:12 2024
 import os
 import subprocess
 import pandas as pd
+import matplotlib.pyplot as plt
 
 
 #print(os.path.exists(gtf_guide))
@@ -193,6 +194,17 @@ GFFCompare_IGR = GFFCompare_transcripts[GFFCompare_transcripts['attribute'].str.
 
 GFFCompare_p = GFFCompare_transcripts[GFFCompare_transcripts['attribute'].str.contains('class_code "p"')]
 GFFCompare_o = GFFCompare_transcripts[GFFCompare_transcripts['attribute'].str.contains('class_code "o"')]
+GFFCompare_exact = GFFCompare_transcripts[GFFCompare_transcripts['attribute'].str.contains('class_code "="')]
+GFFCompare_c = GFFCompare_transcripts[GFFCompare_transcripts['attribute'].str.contains('class_code "c"')]
+GFFCompare_k = GFFCompare_transcripts[GFFCompare_transcripts['attribute'].str.contains('class_code "k"')]
+GFFCompare_m = GFFCompare_transcripts[GFFCompare_transcripts['attribute'].str.contains('class_code "m"')]
+GFFCompare_n = GFFCompare_transcripts[GFFCompare_transcripts['attribute'].str.contains('class_code "n"')]
+GFFCompare_j = GFFCompare_transcripts[GFFCompare_transcripts['attribute'].str.contains('class_code "j"')]
+GFFCompare_e = GFFCompare_transcripts[GFFCompare_transcripts['attribute'].str.contains('class_code "e"')]
+GFFCompare_s = GFFCompare_transcripts[GFFCompare_transcripts['attribute'].str.contains('class_code "s"')]
+GFFCompare_i = GFFCompare_transcripts[GFFCompare_transcripts['attribute'].str.contains('class_code "i"')]
+GFFCompare_y = GFFCompare_transcripts[GFFCompare_transcripts['attribute'].str.contains('class_code "y"')]
+GFFCompare_r = GFFCompare_transcripts[GFFCompare_transcripts['attribute'].str.contains('class_code "r"')]
 
 
 def extract_num_samples(attribute):
@@ -206,3 +218,20 @@ GFFCompare_IGR['num_samples'] = GFFCompare_IGR['attribute'].apply(extract_num_sa
 GFFCompare_p['num_samples'] = GFFCompare_p['attribute'].apply(extract_num_samples)
 
 GFFCompare_o['num_samples'] = GFFCompare_o['attribute'].apply(extract_num_samples)
+
+GFFCompare_exact['num_samples'] = GFFCompare_exact['attribute'].apply(extract_num_samples)
+GFFCompare_exact['num_samples'] = pd.to_numeric(GFFCompare_exact['num_samples'])
+
+GFFCompare_c['num_samples'] = GFFCompare_c['attribute'].apply(extract_num_samples)
+GFFCompare_c['num_samples'] = pd.to_numeric(GFFCompare_c['num_samples'])
+
+
+
+plt.hist(GFFCompare_exact['num_samples'], 
+         bins=50, 
+         edgecolor='black', 
+         color = "darkorange")
+
+# Añadir títulos y etiquetas
+plt.xlabel('Number of samples')
+plt.ylabel('Frequency')
