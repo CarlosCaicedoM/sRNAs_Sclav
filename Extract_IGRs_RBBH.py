@@ -1753,14 +1753,16 @@ all_IGRs_term_prom = pd.concat([promoters_in_ALL_IGRs,
 all_IGRs_term_prom.to_csv ('results_sRNA/reference_results/all_IGRs_term_prom.csv', index = True, header = True)
 
 #BLASTn search
-my_IGRs_reference = "results_sRNA_clade2_pangenome_gene_nontrimmed_50/IGRs/GCF_005519465_IGRs_reduced.fasta"
+my_IGRs_reference = "results_sRNA_clade2_pangenome_gene_nontrimmed_50-600/IGRs/GCF_005519465_IGRs_reduced.fasta"
 rfam_db = os.path.join(os.getcwd(), "raw_data", "rfam_sequences", "Rfam.fa")
 
 
 cline_rfam = NcbiblastnCommandline(query=my_IGRs_reference, 
                                   db=rfam_db,
                                   evalue=1e-6, 
-                                  out = os.path.join("results_sRNA", "reference_results", "my_conserved_IGRs_RNAz_blastn_out.txt"), 
+                                  out = os.path.join("results_sRNA_clade2_pangenome_gene_nontrimmed_50-600",
+                                                     "reference_results", 
+                                                     "all_IGRs_blastn_out.txt"), 
                                   task = 'blastn',
                                   num_threads = 10,
                                   max_hsps = 1,
@@ -1770,7 +1772,9 @@ cline_rfam = NcbiblastnCommandline(query=my_IGRs_reference,
 stdout, stderr = cline_rfam()
 
 
-rfam_results = pd.read_table(os.path.join("results_sRNA", "reference_results", "my_conserved_IGRs_RNAz_blastn_out.txt"), sep='\t', header=None)
+rfam_results = pd.read_table(os.path.join("/results_sRNA_clade2_pangenome_gene_nontrimmed_50-600", 
+                                          "reference_results", 
+                                          "all_IGRs_blastn_out.txt"), sep='\t', header=None)
 
 rfam_results.columns = ["query", "subject", "identity", "coverage",
                    "qlength", "slength", "alength",
